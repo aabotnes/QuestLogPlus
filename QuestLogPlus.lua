@@ -25,13 +25,24 @@ local DEFAULTS = {
 	takeOverKey = true,         -- the quest log key opens this log instead of the default one
 	hideDefaultMapPanel = true, -- close the map's own quest side panel when we open the map
 	listRewards = true,         -- small reward icons in the quest list
-	filterItems = false,        -- only quests you hold quest items for
+	filterItems = false,        -- filter: only quests you hold quest items for
+	filterReady = false,        -- filter: only quests ready to turn in
+	filterTracked = false,      -- filter: only tracked quests
+	mapAlpha = 1,               -- opacity of the attached map
 	gameWindow = true,          -- move aside when game windows (character sheet, ...) open
 	detailPopout = true,        -- quest details open in a separate panel on the log's right side
 	popoutWidth = 360,
 	collapsed = {},
 	pos = nil,                  -- log position { point, relativePoint, x, y }
 	size = nil,                 -- log size { w, h }
+}
+
+-- filters in the Filter menu (saved between sessions)
+local FILTERS = {
+	{ key = "filterItems", label = "Has quest items",
+		tip = "Quests you hold quest items for: a usable quest item, or at least one item collected for an objective." },
+	{ key = "filterReady", label = "Ready to turn in", tip = "Quests that are complete and ready to turn in." },
+	{ key = "filterTracked", label = "Tracked", tip = "Quests you are tracking." },
 }
 
 local FRAME_W, FRAME_H = 384, 600
@@ -81,9 +92,16 @@ local logMoving = false
 local popout, popInset         -- the separate quest details panel
 local popButtons = {}
 local allChecks = {}           -- every settings checkbox, kept in sync with db
+local allSliders = {}
 local settingsFrame
+local searchBox, filterButton, filterMenu, chipBar
+local chips = {}
+local searchText = ""          -- lower-case search text (not saved)
+local mapOffButton
+local mapAlphaSet              -- the map opacity this addon has applied
 
 local Refresh, RequestRefresh, UpdateBottom, OnRowClick, ApplyMapLayout, SetOption, AttachDetail, AdaptToPanels
+local MakeOffButton
 local logPushed = false      -- the log is moved aside for a game window (its home position is db.pos)
 
 ---------------------------------------------------------------------------
@@ -232,6 +250,10 @@ local function HasQuestItems(q)
 	return false
 end
 
+local function IsTracked(questID)
+	return SafeCall(C_QuestLog.GetQuestWatchType, questID) ~= nil
+end
+
 local function QuestColor(q)
 	if C_PlayerInfo and C_PlayerInfo.GetContentDifficultyQuestForPlayer and GetDifficultyColor then
 		local diff = SafeCall(C_PlayerInfo.GetContentDifficultyQuestForPlayer, q.questID)
@@ -302,6 +324,44 @@ local function EnsureExpanded()
 	end
 end
 
+local function ActiveFilterCount()
+	local n = 0
+	for _, fl in ipairs(FILTERS) do
+		if db[fl.key] then n = n + 1 end
+	end
+	return n
+end
+
+local function IsFiltering()
+	return searchText ~= "" or ActiveFilterCount() > 0
+end
+
+local function Contains(text, needle)
+	return type(text) == "string" and strlower(text):find(needle, 1, true) ~= nil
+end
+
+-- search matches the quest name, its objectives or its zone
+local function SearchMatch(q, zone)
+	if searchText == "" then return true end
+	if Contains(zone, searchText) or Contains(q.title, searchText) then return true end
+	for _, o in ipairs(GetObjectives(q.questID)) do
+		if Contains(Clean(o.text), searchText) then return true end
+	end
+	return false
+end
+
+local function PassesFilters(q, zone)
+	if db.filterReady and q.state ~= "complete" then return false end
+	if db.filterTracked and not IsTracked(q.questID) then return false end
+	if db.filterItems and not HasQuestItems(q) then return false end
+	return SearchMatch(q, zone)
+end
+
+-- zones are shown expanded while searching
+local function IsCollapsed(g)
+	return db.collapsed[g.title] and searchText == ""
+end
+
 local function BuildQuestList()
 	local result, current = {}, nil
 	wipe(questsByID)
@@ -321,13 +381,13 @@ local function BuildQuestList()
 					title = info.title,
 					level = info.level,
 				}
-				if not db.filterItems or HasQuestItems(q) then
+				q.state = GetQuestState(q.questID)
+				if PassesFilters(q, current and current.title) then
 					if not current then
 						current = { title = OTHER or "Other", quests = {} }
 						result[#result + 1] = current
 					end
 					q.order = #current.quests
-					q.state = GetQuestState(q.questID)
 					q.xp = GetQuestXP(q.questID)
 					current.quests[#current.quests + 1] = q
 					questsByID[q.questID] = q
@@ -374,10 +434,6 @@ local function SelectedList()
 		end
 	end
 	return ids
-end
-
-local function IsTracked(questID)
-	return SafeCall(C_QuestLog.GetQuestWatchType, questID) ~= nil
 end
 
 local function ToggleTrack(questID)
@@ -637,10 +693,69 @@ local function MapTarget()
 end
 
 local function RestoreMapDefaults()
+	if mapOffButton then mapOffButton:Hide() end
 	if not mapApplied or not WorldMapFrame or not CanChangeMap() then return end
 	mapApplied = false
 	if mapOrigScale then WorldMapFrame:SetScale(mapOrigScale) end
+	if mapAlphaSet then
+		WorldMapFrame:SetAlpha(1)
+		mapAlphaSet = nil
+	end
 	if mapHandle then mapHandle:Hide() end
+end
+
+-- The map's title-bar buttons run leftward from its close button (maximize,
+-- and with Leatrix Maps its settings button and more). Find the leftmost one
+-- so the Off button goes next to them without covering any.
+local function LeftmostTitleButton()
+	local close = WorldMapFrame.BorderFrame and WorldMapFrame.BorderFrame.CloseButton
+	if not close or not close:IsVisible() then return end
+	local candidates = {}
+	local function Collect(parent, depth)
+		for _, c in ipairs({ parent:GetChildren() }) do
+			if c ~= mapOffButton and c ~= mapHandle and c ~= WorldMapFrame.ScrollContainer and c:IsVisible() then
+				local w, h = Clean(c:GetWidth()), Clean(c:GetHeight())
+				if w and h and w > 4 and h > 4 and w <= 48 and h <= 40 then
+					candidates[#candidates + 1] = c
+				end
+				if depth < 3 then Collect(c, depth + 1) end
+			end
+		end
+	end
+	Collect(WorldMapFrame, 1)
+	local cur = close
+	for _ = 1, 8 do
+		local cl = Clean(cur:GetLeft())
+		local _, cy = cur:GetCenter()
+		cy = Clean(cy)
+		if not cl or not cy then break end
+		local nextBtn, nextRight
+		for _, c in ipairs(candidates) do
+			local r = Clean(c:GetRight())
+			local _, y = c:GetCenter()
+			y = Clean(y)
+			if c ~= cur and r and y and math.abs(y - cy) < 8 and r <= cl + 4 and r >= cl - 12 then
+				if not nextRight or r > nextRight then nextBtn, nextRight = c, r end
+			end
+		end
+		if not nextBtn then break end
+		cur = nextBtn
+	end
+	return cur
+end
+
+local function PlaceMapOffButton()
+	if not mapOffButton then return end
+	local anchor = LeftmostTitleButton()
+	mapOffButton:ClearAllPoints()
+	if anchor then
+		mapOffButton:SetPoint("RIGHT", anchor, "LEFT", -4, 0)
+		mapOffButton:SetFrameLevel(anchor:GetFrameLevel() + 2)
+	else
+		mapOffButton:SetPoint("TOPRIGHT", mapBorder or WorldMapFrame, "TOPRIGHT", -60, -3)
+		mapOffButton:SetFrameLevel(WorldMapFrame:GetFrameLevel() + 100)
+	end
+	mapOffButton:Show()
 end
 
 function ApplyMapLayout()
@@ -672,6 +787,12 @@ function ApplyMapLayout()
 	-- our drag handle is only needed on the default map; with a skin's border
 	-- (Leatrix Maps) the map's own dragging is used instead (see HookMap)
 	if mapHandle then mapHandle:SetShown(not mapBorder) end
+
+	if mapAlphaSet ~= db.mapAlpha then
+		WorldMapFrame:SetAlpha(db.mapAlpha)
+		mapAlphaSet = db.mapAlpha
+	end
+	if not logMoving then PlaceMapOffButton() end -- anchored, so it moves along while dragging
 end
 
 -- run after the game (and Leatrix Maps) have finished placing the map
@@ -786,6 +907,13 @@ local function HookMap()
 	mapHandle:SetScript("OnMouseUp", function() StopLogMove() end)
 	mapHandle:Hide()
 
+	-- "Off" next to the map's close button: turns the attached map off
+	-- (the close button only closes it this time)
+	mapOffButton = MakeOffButton(WorldMapFrame, "Turn off the map",
+		"The map won't open with the quest log anymore. The close button only closes it this time. Show Map turns it back on.",
+		function() SetOption("showMap", false) end)
+	mapOffButton:Hide()
+
 	-- with a map addon that makes the map draggable (Leatrix Maps "Enable
 	-- movement"), dragging the map moves the log too; the map follows the log
 	WorldMapFrame:HookScript("OnDragStart", function()
@@ -850,6 +978,73 @@ local function MakeCheck(parent, label, tooltip, key)
 	return cb
 end
 
+-- small "Off" button for title bars (next to a close button)
+function MakeOffButton(parent, title, text, onClick)
+	local b = CreateFrame("Button", nil, parent)
+	b:SetSize(28, 18)
+	local bg = b:CreateTexture(nil, "BACKGROUND")
+	bg:SetAllPoints()
+	bg:SetColorTexture(0, 0, 0, 0.65)
+	local edge = b:CreateTexture(nil, "BORDER")
+	edge:SetPoint("TOPLEFT", -1, 1)
+	edge:SetPoint("BOTTOMRIGHT", 1, -1)
+	edge:SetColorTexture(0.6, 0.5, 0.2, 0.8)
+	local hl = b:CreateTexture(nil, "HIGHLIGHT")
+	hl:SetAllPoints()
+	hl:SetColorTexture(1, 1, 1, 0.15)
+	local fs = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	fs:SetPoint("CENTER", 0, 0)
+	fs:SetText("Off")
+	b:SetScript("OnClick", onClick)
+	b:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
+		GameTooltip:SetText(title, 1, 1, 1)
+		GameTooltip:AddLine(text, 0.8, 0.8, 0.8, true)
+		GameTooltip:Show()
+	end)
+	b:SetScript("OnLeave", HideTooltip)
+	return b
+end
+
+-- a 5% step slider bound to db[key] (0..1, shown as a percentage)
+local function MakeSlider(parent, label, minV, maxV, key, onChange)
+	local s = CreateFrame("Slider", nil, parent, FirstTemplate("BackdropTemplate"))
+	s:SetOrientation("HORIZONTAL")
+	s:SetSize(200, 16)
+	s:SetMinMaxValues(minV, maxV)
+	s:SetValueStep(0.05)
+	if s.SetObeyStepOnDrag then s:SetObeyStepOnDrag(true) end
+	if s.SetBackdrop then
+		s:SetBackdrop({
+			bgFile = "Interface\\Buttons\\UI-SliderBar-Background",
+			edgeFile = "Interface\\Buttons\\UI-SliderBar-Border",
+			tile = true, tileSize = 8, edgeSize = 8,
+			insets = { left = 3, right = 3, top = 6, bottom = 6 },
+		})
+	end
+	s:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
+	s:EnableMouseWheel(true)
+	s:SetScript("OnMouseWheel", function(self, delta) self:SetValue(self:GetValue() + delta * 0.05) end)
+	local text = s:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	text:SetPoint("BOTTOMLEFT", s, "TOPLEFT", 0, 3)
+	local function Label(v) text:SetText(("%s: %d%%"):format(label, math.floor(v * 100 + 0.5))) end
+	s:SetScript("OnValueChanged", function(_, v)
+		v = math.floor(v * 20 + 0.5) / 20
+		Label(v)
+		if db[key] ~= v then
+			db[key] = v
+			if onChange then onChange(v) end
+		end
+	end)
+	s.Sync = function()
+		s:SetValue(db[key])
+		Label(db[key])
+	end
+	s.Sync()
+	allSliders[#allSliders + 1] = s
+	return s
+end
+
 local function MakeScroll(parent)
 	local tpl = FirstTemplate("UIPanelScrollFrameTemplate", "ScrollFrameTemplate")
 	local s = CreateFrame("ScrollFrame", nil, parent, tpl)
@@ -883,6 +1078,12 @@ end
 ---------------------------------------------------------------------------
 
 local function OpenDetail(questID)
+	-- clicking the quest that is already open hides the details panel
+	if db.detailPopout and popout:IsShown() and detailQuestID == questID then
+		detailQuestID = nil
+		popout:Hide()
+		return
+	end
 	detailQuestID = questID
 	detailScroll:SetVerticalScroll(0)
 	if db.detailPopout then
@@ -979,7 +1180,7 @@ local function OnRowEnter(self)
 		end
 	else
 		GameTooltip:AddLine(" ")
-		GameTooltip:AddLine("Click: details   Shift-click: " .. (IsTracked(q.questID) and "untrack" or "track"), 0.5, 0.5, 0.5)
+		GameTooltip:AddLine("Click: show/hide details   Shift-click: " .. (IsTracked(q.questID) and "untrack" or "track"), 0.5, 0.5, 0.5)
 	end
 	GameTooltip:Show()
 end
@@ -1134,7 +1335,7 @@ local function SetupHeader(r, g, width)
 	r.bg:SetColorTexture(0, 0, 0, 0.35)
 
 	r.expandBtn:Show()
-	r.expand:SetTexture(db.collapsed[g.title] and PLUS_TEX or MINUS_TEX)
+	r.expand:SetTexture(IsCollapsed(g) and PLUS_TEX or MINUS_TEX)
 
 	local titleX = 22
 	if mode then
@@ -1338,7 +1539,7 @@ local function RenderList()
 		h:ClearAllPoints()
 		h:SetPoint("TOPLEFT", listContent, "TOPLEFT", 0, -y)
 		y = y + h:GetHeight() + 2
-		if not db.collapsed[g.title] then
+		if not IsCollapsed(g) then
 			for _, q in ipairs(g.quests) do
 				n = n + 1
 				local r = GetRow(n)
@@ -1353,7 +1554,7 @@ local function RenderList()
 	for i = n + 1, #rows do rows[i]:Hide() end
 	listContent:SetHeight(math.max(y, 1))
 	if #groups == 0 then
-		emptyText:SetText(db.filterItems and totalQuests > 0 and "No quests with quest items in your bags."
+		emptyText:SetText(IsFiltering() and totalQuests > 0 and "No quests match your search or filters."
 			or "Your quest log is empty.")
 		emptyText:Show()
 	else
@@ -1612,7 +1813,7 @@ function UpdateBottom()
 		headerText:SetText("|cffff5544ABANDON MODE|r - click quests to select")
 	else
 		local max = SafeCall(C_QuestLog.GetMaxNumQuestsCanAccept) or MAX_QUESTS or 0
-		if db.filterItems then
+		if IsFiltering() then
 			headerText:SetText(("Showing |cffffffff%d|r of %d (%d/%d)"):format(shownQuests, totalQuests, totalQuests, max))
 		else
 			headerText:SetText(("Quests: |cffffffff%d/%d|r"):format(totalQuests, max))
@@ -1623,6 +1824,65 @@ end
 ---------------------------------------------------------------------------
 -- Refresh
 ---------------------------------------------------------------------------
+
+local function CreateChip(i)
+	local c = CreateFrame("Button", nil, chipBar)
+	c:SetHeight(18)
+	local bg = c:CreateTexture(nil, "BACKGROUND")
+	bg:SetAllPoints()
+	bg:SetColorTexture(0.2, 0.55, 0.2, 0.45)
+	local edge = c:CreateTexture(nil, "BORDER")
+	edge:SetPoint("TOPLEFT", 0, 0)
+	edge:SetPoint("BOTTOMLEFT", 0, 0)
+	edge:SetWidth(2)
+	edge:SetColorTexture(0.4, 1, 0.4, 1)
+	local hl = c:CreateTexture(nil, "HIGHLIGHT")
+	hl:SetAllPoints()
+	hl:SetColorTexture(1, 1, 1, 0.15)
+	c.text = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	c.text:SetPoint("CENTER", 1, 0)
+	c:SetScript("OnClick", function(self) SetOption(self.key, false) end)
+	c:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+		GameTooltip:SetText("Click to remove this filter", 1, 1, 1)
+		GameTooltip:Show()
+	end)
+	c:SetScript("OnLeave", HideTooltip)
+	chips[i] = c
+	return c
+end
+
+-- Filter button label/glow, the chips, and room for them above the list
+local function UpdateFilterUI()
+	if not filterButton then return end
+	local active = {}
+	for _, fl in ipairs(FILTERS) do
+		if db[fl.key] then active[#active + 1] = fl end
+	end
+	local n = #active
+	filterButton:SetText(n > 0 and ("Filter (%d)"):format(n) or "Filter")
+	local fs = filterButton:GetFontString()
+	if fs then
+		if n > 0 then fs:SetTextColor(0.4, 1, 0.4) else fs:SetTextColor(1, 0.82, 0) end
+	end
+	filterButton.glow:SetShown(n > 0)
+	for i, fl in ipairs(active) do
+		local c = chips[i] or CreateChip(i)
+		c.key = fl.key
+		c.text:SetText(fl.label .. "  |cffff6666x|r")
+		c:SetWidth(c.text:GetStringWidth() + 14)
+		c:ClearAllPoints()
+		if i == 1 then
+			c:SetPoint("LEFT", chipBar, "LEFT", 0, 0)
+		else
+			c:SetPoint("LEFT", chips[i - 1], "RIGHT", 4, 0)
+		end
+		c:Show()
+	end
+	for i = n + 1, #chips do chips[i]:Hide() end
+	chipBar:SetShown(n > 0)
+	inset:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, n > 0 and -108 or -88)
+end
 
 -- move the details scroll area into the log's inset or the separate panel
 function AttachDetail(container)
@@ -1635,6 +1895,7 @@ end
 
 function Refresh()
 	if not frame or not frame:IsShown() then return end
+	UpdateFilterUI()
 	EnsureExpanded()
 	groups = BuildQuestList()
 
@@ -1749,6 +2010,11 @@ local function CreatePopout()
 		detailQuestID = nil
 		popout:Hide()
 	end)
+	local popOff = MakeOffButton(popout, "Turn off the details panel",
+		"Quest details will open inside the quest log instead. The close button only hides the panel; you can turn the panel back on in settings.",
+		function() SetOption("detailPopout", false) end)
+	popOff:SetPoint("RIGHT", popout.CloseButton, "LEFT", -2, 0)
+	popOff:SetFrameLevel(popout.CloseButton:GetFrameLevel() + 1)
 
 	popInset = popout.Inset
 	if not popInset then
@@ -1869,7 +2135,7 @@ local function CreateUI()
 		end
 	end
 	inset:ClearAllPoints()
-	inset:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -60)
+	inset:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -88)
 	inset:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, 30)
 
 	-- toolbar: quest count, settings gear, map button
@@ -1904,6 +2170,97 @@ local function CreateUI()
 	headerText:SetPoint("TOPRIGHT", gear, "TOPLEFT", -6, -2)
 	headerText:SetJustifyH("LEFT")
 	headerText:SetWordWrap(false)
+
+	-- search row: search box + Filter button
+	filterButton = MakeButton(frame, "Filter", function()
+		filterMenu:SetShown(not filterMenu:IsShown())
+	end)
+	filterButton:SetSize(78, 22)
+	filterButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -61)
+	filterButton.glow = filterButton:CreateTexture(nil, "OVERLAY")
+	filterButton.glow:SetPoint("TOPLEFT", 2, -2)
+	filterButton.glow:SetPoint("BOTTOMRIGHT", -2, 2)
+	filterButton.glow:SetColorTexture(0.3, 1, 0.3, 0.18)
+	filterButton.glow:Hide()
+
+	local sbT = FirstTemplate("SearchBoxTemplate", "InputBoxTemplate")
+	searchBox = CreateFrame("EditBox", nil, frame, sbT)
+	searchBox:SetHeight(20)
+	searchBox:SetAutoFocus(false)
+	searchBox:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -62)
+	searchBox:SetPoint("TOPRIGHT", filterButton, "TOPLEFT", -8, -1)
+	if not sbT then
+		local sbg = searchBox:CreateTexture(nil, "BACKGROUND")
+		sbg:SetAllPoints()
+		sbg:SetColorTexture(0, 0, 0, 0.5)
+		searchBox:SetFontObject("ChatFontNormal")
+		searchBox:SetTextInsets(6, 6, 0, 0)
+	end
+	if searchBox.Instructions then
+		searchBox.Instructions:SetText("Search quests")
+	else
+		local ph = searchBox:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+		ph:SetPoint("LEFT", searchBox, "LEFT", 6, 0)
+		ph:SetText("Search quests")
+		searchBox.placeholder = ph
+	end
+	searchBox:HookScript("OnTextChanged", function(self)
+		local text = strlower(strtrim(self:GetText() or ""))
+		if self.placeholder then self.placeholder:SetShown(text == "" and not self:HasFocus()) end
+		if text ~= searchText then
+			searchText = text
+			RequestRefresh()
+		end
+	end)
+	searchBox:HookScript("OnEditFocusGained", function(self) if self.placeholder then self.placeholder:Hide() end end)
+	searchBox:HookScript("OnEditFocusLost", function(self)
+		if self.placeholder then self.placeholder:SetShown((self:GetText() or "") == "") end
+	end)
+	searchBox:HookScript("OnEnterPressed", function(self) self:ClearFocus() end)
+	searchBox:HookScript("OnEscapePressed", function(self) self:ClearFocus() end)
+
+	-- filter menu
+	local menuT = FirstTemplate("TooltipBackdropTemplate", "BackdropTemplate")
+	filterMenu = CreateFrame("Frame", nil, frame, menuT)
+	if menuT == "BackdropTemplate" then
+		filterMenu:SetBackdrop({
+			bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+			edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+			tile = true, tileSize = 16, edgeSize = 16,
+			insets = { left = 4, right = 4, top = 4, bottom = 4 },
+		})
+		filterMenu:SetBackdropColor(0, 0, 0, 0.92)
+	elseif not menuT then
+		local mbg = filterMenu:CreateTexture(nil, "BACKGROUND")
+		mbg:SetAllPoints()
+		mbg:SetColorTexture(0, 0, 0, 0.92)
+	end
+	filterMenu:SetFrameStrata("DIALOG")
+	filterMenu:EnableMouse(true)
+	filterMenu:SetPoint("TOPRIGHT", filterButton, "BOTTOMRIGHT", 0, -2)
+	local menuTitle = filterMenu:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	menuTitle:SetPoint("TOPLEFT", filterMenu, "TOPLEFT", 10, -8)
+	menuTitle:SetText("Only show quests that are:")
+	for i, fl in ipairs(FILTERS) do
+		local cb = MakeCheck(filterMenu, fl.label, fl.tip, fl.key)
+		cb:SetPoint("TOPLEFT", filterMenu, "TOPLEFT", 8, -22 - (i - 1) * 22)
+	end
+	local clear = MakeButton(filterMenu, "Clear filters", function()
+		for _, fl in ipairs(FILTERS) do
+			if db[fl.key] then SetOption(fl.key, false) end
+		end
+	end)
+	clear:SetSize(110, 20)
+	clear:SetPoint("BOTTOMLEFT", filterMenu, "BOTTOMLEFT", 10, 8)
+	filterMenu:SetSize(200, 22 + #FILTERS * 22 + 36)
+	filterMenu:Hide()
+
+	-- active filters as chips under the search box; click one to remove it
+	chipBar = CreateFrame("Frame", nil, frame)
+	chipBar:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -86)
+	chipBar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -86)
+	chipBar:SetHeight(18)
+	chipBar:Hide()
 
 	-- scroll areas
 	listScroll, listContent = MakeScroll(inset)
@@ -2140,8 +2497,6 @@ local OPTIONS = {
 		"Clicking a quest opens its details in a panel on the log's right side (between the log and the map) instead of inside the log." },
 	{ "listRewards", "Reward icons in the quest list",
 		"Small reward icons under each quest, with \"Choose one\" / \"You will receive\" above them. Hover an icon for the item tooltip." },
-	{ "filterItems", "Only quests with quest items",
-		"Only show quests you hold quest items for: a usable quest item, or at least one item collected for an objective." },
 	{ "showLevel", "Show quest levels", "Shows [12] in front of each quest name." },
 	{ "completedFirst", "Ready-to-turn-in quests at the top", "Completed quests sort to the top of their zone." },
 	{ "gameWindow", "Move aside for game windows",
@@ -2154,9 +2509,11 @@ local OPTIONS = {
 
 local OPTION_LABEL = {}
 for _, o in ipairs(OPTIONS) do OPTION_LABEL[o[1]] = o[2] end
+for _, fl in ipairs(FILTERS) do OPTION_LABEL[fl.key] = "Filter: " .. fl.label end
 
 local function SyncChecks()
 	for _, cb in ipairs(allChecks) do cb:SetChecked(db[cb.key] and true or false) end
+	for _, sl in ipairs(allSliders) do sl.Sync() end
 end
 
 function SetOption(key, value)
@@ -2205,6 +2562,14 @@ local function BuildOptions(parent, x, y)
 		cb:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
 		y = y - 26
 	end
+	local alpha = MakeSlider(parent, "Map opacity", 0.2, 1, "mapAlpha", function(v)
+		if MapActive() and CanChangeMap() then
+			WorldMapFrame:SetAlpha(v)
+			mapAlphaSet = v
+		end
+	end)
+	alpha:SetPoint("TOPLEFT", parent, "TOPLEFT", x + 6, y - 16)
+	y = y - 42
 	local reset = MakeButton(parent, "Reset window positions", ResetGeometry)
 	reset:SetSize(190, 22)
 	reset:SetPoint("TOPLEFT", parent, "TOPLEFT", x + 4, y - 8)
@@ -2299,6 +2664,7 @@ Register("PLAYER_LOGIN")
 Register("UPDATE_BINDINGS")
 Register("PLAYER_REGEN_ENABLED")
 Register("PLAYER_LEVEL_UP")
+Register("GLOBAL_MOUSE_DOWN")
 for _, ev in ipairs({
 	"QUEST_LOG_UPDATE", "QUEST_ACCEPTED", "QUEST_REMOVED", "QUEST_TURNED_IN",
 	"QUEST_WATCH_LIST_CHANGED", "UNIT_QUEST_LOG_CHANGED", "GROUP_ROSTER_UPDATE",
@@ -2333,6 +2699,10 @@ events:SetScript("OnEvent", function(_, event, arg1)
 	elseif event == "PLAYER_REGEN_ENABLED" then
 		if pendingBind then ApplyKeyOverride() end
 		if MapActive() then ScheduleMapLayout() end
+	elseif event == "GLOBAL_MOUSE_DOWN" then
+		if filterMenu and filterMenu:IsShown() and not MouseIsOver(filterMenu) and not MouseIsOver(filterButton) then
+			filterMenu:Hide()
+		end
 	elseif event == "PLAYER_LEVEL_UP" then
 		wipe(rewardCache)
 		RequestRefresh()
