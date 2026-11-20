@@ -1658,7 +1658,9 @@ local function SetupQuest(r, q, width)
 		r.sub:Hide()
 	end
 
-	-- optional reward icons
+	-- optional reward icons, laid out like text: each label followed by its
+	-- icons (and the gold), both blocks on one line when they fit, wrapping
+	-- onto more lines when they don't
 	local iconN, labelN = 0, 0
 	local moneyShown = false
 	r.money:Hide()
@@ -1666,16 +1668,31 @@ local function SetupQuest(r, q, width)
 		local rw = GetRewards(q.questID)
 		local money = Clean(SafeCall(GetQuestLogRewardMoney, q.questID))
 		if type(money) ~= "number" or money <= 0 then money = nil end
-		local perRow = math.max(1, math.floor((innerW + 3) / (K.ICON + 3)))
+		local right = innerX + innerW
+		local lineH = K.ICON + 2
+		local cx, cy = innerX, y + 1 -- cursor: left edge and top of the current line
+		local used = false
+		local function Fit(w)
+			if cx > innerX and cx + w > right then
+				cx, cy = innerX, cy + lineH
+			end
+		end
+		local function Text(fs, text, keepWith)
+			fs:SetText(text)
+			local w = fs:GetStringWidth()
+			Fit(w + (keepWith or 0)) -- keep a label on the same line as its first icon
+			fs:ClearAllPoints()
+			fs:SetPoint("TOPLEFT", r, "TOPLEFT", cx, -(cy + 4))
+			fs:Show()
+			cx = cx + w + 4
+		end
 		local function Block(label, list, withMoney)
 			if #list == 0 and not withMoney then return end
+			if used then cx = cx + 10 end
+			used = true
 			labelN = labelN + 1
-			local fs = GetRowLabel(r, labelN)
-			fs:ClearAllPoints()
-			fs:SetPoint("TOPLEFT", r, "TOPLEFT", innerX, -(y + 2))
-			fs:SetText(label)
-			y = y + 14
-			for i, d in ipairs(list) do
+			Text(GetRowLabel(r, labelN), label, #list > 0 and (K.ICON + 4) or 40)
+			for _, d in ipairs(list) do
 				iconN = iconN + 1
 				local b = GetRowIcon(r, iconN)
 				b.reward = d
@@ -1683,34 +1700,20 @@ local function SetupQuest(r, q, width)
 				if d.isUsable == false then b.Icon:SetVertexColor(1, 0.2, 0.2) else b.Icon:SetVertexColor(1, 1, 1) end
 				SetIconBorder(b.Border, d.quality)
 				b.Count:SetText((type(d.count) == "number" and d.count > 1) and d.count or "")
-				local col, ro = (i - 1) % perRow, math.floor((i - 1) / perRow)
+				Fit(K.ICON)
 				b:ClearAllPoints()
-				b:SetPoint("TOPLEFT", r, "TOPLEFT", innerX + col * (K.ICON + 3), -(y + ro * (K.ICON + 3)))
+				b:SetPoint("TOPLEFT", r, "TOPLEFT", cx, -cy)
+				cx = cx + K.ICON + 3
 			end
-			local iconRows = math.ceil(#list / perRow)
-			-- gold goes right after the item icons (on a new line if it doesn't fit)
 			if withMoney then
-				r.money:SetText(CoinStr(withMoney, 12))
-				local mx, row = innerX, math.max(iconRows - 1, 0)
-				if #list > 0 then
-					local lastCol = (#list - 1) % perRow
-					mx = innerX + (lastCol + 1) * (K.ICON + 3) + 3
-					if mx + r.money:GetStringWidth() > innerX + innerW then
-						mx, row = innerX, iconRows
-						iconRows = iconRows + 1
-					end
-				else
-					iconRows = 1
-				end
-				r.money:ClearAllPoints()
-				r.money:SetPoint("TOPLEFT", r, "TOPLEFT", mx, -(y + row * (K.ICON + 3) + 4))
-				r.money:Show()
+				if #list > 0 then cx = cx + 2 end
+				Text(r.money, CoinStr(withMoney, 12))
 				moneyShown = true
 			end
-			y = y + iconRows * (K.ICON + 3) + 1
 		end
 		Block("Choose one:", rw.choices)
 		Block((#rw.choices > 0) and "You will also receive:" or "You will receive:", rw.items, money)
+		if used then y = cy + lineH end
 	end
 	HideRowRewards(r, iconN + 1, labelN + 1)
 	-- only as tall as what is shown: a single line when there is nothing under the title

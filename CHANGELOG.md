@@ -1,5 +1,9 @@
 # Quest Log Plus
 
+## v1.4.6
+
+- **More compact reward row:** the icons and the gold now follow their label on the same line ("Choose one: [icons]  You will also receive: [icon] 1 [gold]"). Both parts share one line when they fit and wrap onto the next line when they don't.
+
 ## v1.4.5
 
 - **Fixed:** gold rewards showed as a plain copper number (like "4000"). They now show as gold, silver and copper amounts with the coin icons ("40" with a silver coin). The details panel shows gold again too; it was missing there.
