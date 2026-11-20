@@ -19,23 +19,23 @@ BINDING_HEADER_QUESTLOGPLUS = "|cffc27dff[Soeta's]|r Quest Log Plus"
 BINDING_NAME_QUESTLOGPLUS_TOGGLE = "Toggle Quest Log Plus"
 
 local DEFAULTS = {
-	showMap = false,            -- open the world map next to the log
+	showMap = true,             -- open the world map next to the log
 	showLevel = true,           -- "[12] Quest name"
 	completedFirst = true,      -- ready-to-turn-in quests sort to the top of each zone
 	takeOverKey = true,         -- the quest log key opens this log instead of the default one
 	hideDefaultMapPanel = true, -- close the map's own quest side panel when we open the map
 	listRewards = true,         -- small reward icons in the quest list
-	showXP = true,              -- "+1,250 xp" on each quest in the list
-	readyText = true,           -- "Ready to turn in" / "Failed" text under finished and failed quests
+	showXP = false,             -- "+1,250 xp" on each quest in the list
+	readyText = false,          -- "Ready to turn in" / "Failed" text under finished and failed quests
 	selectOnMap = true,         -- picking a quest while the map is shown selects (super-tracks) it on the map
-	trackedMarker = true,       -- thin border on the right of tracked quests
-	completeMarker = true,      -- green border on the left of finished quests
+	trackedMarker = false,      -- thin border on the right of tracked quests
+	completeMarker = false,     -- green border on the left of finished quests
 	tooltipObjectives = true,   -- quest objective text in the quest tooltip
 	listObjectives = true,      -- objective progress lines under each quest in the list
 	filterItems = false,        -- filter: only quests you hold quest items for
 	filterReady = false,        -- filter: only quests ready to turn in
 	filterTracked = false,      -- filter: only tracked quests
-	mapAlpha = 1,               -- opacity of the attached map
+	mapAlpha = 0.7,             -- opacity of the attached map
 	gameWindow = true,          -- move aside when game windows (character sheet, ...) open
 	detailPopout = true,        -- quest details open in a separate panel on the log's right side
 	popoutWidth = 360,
@@ -2894,7 +2894,8 @@ local function BuildOptions(parent, x, y)
 	end
 	y = bottom - 6
 	local reset = MakeButton(parent, "Reset window positions", ResetGeometry)
-	reset:SetSize(190, 22)
+	local resetText = reset:GetFontString()
+	reset:SetSize(math.max(190, (resetText and resetText:GetStringWidth() or 150) + 36), 22)
 	reset:SetPoint("TOPLEFT", parent, "TOPLEFT", x + 4, y - 8)
 	return y - 30
 end
