@@ -1,5 +1,12 @@
 # Quest Log Plus
 
+## v1.5.0
+
+- **Fixed:** sharing could abandon a quest instead of sharing it. Sharing now works the way the default log does on Forever: it selects the quest and shares it, then puts your selection back.
+- **Safer abandon:** each quest is only abandoned if the game confirms it is the quest you picked; otherwise it is skipped and named in chat.
+- **Sharing status in chat:** each shared quest is announced in chat, and the game's replies ("Sharing quest with ...", "... is already on that quest", ...) show in chat like with the default log.
+- **Group members on the quest:** quests show [2] in front of the name when 2 of your party or raid members are also on them, like the default log. Hover a quest to see who. New setting *Group members on the quest* (on by default), also `/qlp group`.
+
 ## v1.4.9
 
 - **New defaults** for new installs: the map attached and 70% opaque, the details panel, objective progress, reward icons, quest levels and ready quests at the top on; XP rewards, status text and the completed/tracked borders off. Existing settings are kept.

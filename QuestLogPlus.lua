@@ -29,6 +29,7 @@ local DEFAULTS = {
 	readyText = false,          -- "Ready to turn in" / "Failed" text under finished and failed quests
 	selectOnMap = true,         -- picking a quest while the map is shown selects (super-tracks) it on the map
 	trackedMarker = false,      -- thin border on the right of tracked quests
+	showGroupCount = true,      -- [2] in front of quests that group members are also on
 	completeMarker = false,     -- green border on the left of finished quests
 	tooltipObjectives = true,   -- quest objective text in the quest tooltip
 	listObjectives = true,      -- objective progress lines under each quest in the list
@@ -396,6 +397,91 @@ function Timers.Tick(elapsed)
 	end
 end
 
+-- Group members on quests, and the quest share replies in chat.
+local Party = { shareUntil = 0, seen = {} }
+
+-- the other party / raid members
+function Party.Units()
+	local units = {}
+	if IsInRaid and IsInRaid() then
+		for i = 1, (GetNumGroupMembers and GetNumGroupMembers() or 0) do
+			local u = "raid" .. i
+			if Clean(SafeCall(UnitIsUnit, u, "player")) ~= true then units[#units + 1] = u end
+		end
+	elseif IsInGroup and IsInGroup() then
+		for i = 1, (GetNumSubgroupMembers and GetNumSubgroupMembers() or 0) do units[#units + 1] = "party" .. i end
+	end
+	return units
+end
+
+function Party.OnQuest(unit, q)
+	local v
+	if C_QuestLog.IsUnitOnQuest then
+		v = SafeCall(C_QuestLog.IsUnitOnQuest, unit, q.questID)
+	elseif IsUnitOnQuest then
+		v = SafeCall(IsUnitOnQuest, q.index, unit)
+	end
+	v = Clean(v)
+	return v == true or v == 1
+end
+
+-- names of the group members on quest q, or nil
+function Party.Members(q, units)
+	local names
+	for _, u in ipairs(units) do
+		if Party.OnQuest(u, q) then
+			names = names or {}
+			names[#names + 1] = Clean(SafeCall(UnitName, u)) or u
+		end
+	end
+	return names
+end
+
+-- patterns for the game's quest share replies ("Sharing quest with %s...", "%s is already on that quest", ...)
+function Party.Patterns()
+	if Party.patterns then return Party.patterns end
+	local list = {}
+	pcall(function()
+		for k, v in pairs(_G) do
+			if type(k) == "string" and type(v) == "string" and v ~= "" and k:sub(1, 15) == "ERR_QUEST_PUSH_" then
+				local p = v:gsub("([%^%$%(%)%.%[%]%*%+%-%?%%])", "%%%1")
+				p = p:gsub("%%%%%d%%%$s", ".+"):gsub("%%%%s", ".+"):gsub("%%%%%d%%%$d", "%%d+"):gsub("%%%%d", "%%d+")
+				list[#list + 1] = "^" .. p .. "$"
+			end
+		end
+	end)
+	Party.patterns = list
+	return list
+end
+
+function Party.IsShareReply(msg)
+	msg = Clean(msg)
+	if type(msg) ~= "string" then return false end
+	for _, p in ipairs(Party.Patterns()) do
+		if msg:find(p) then return true end
+	end
+	return false
+end
+
+-- a share reply that reached the chat on its own
+function Party.OnSystemMessage(msg)
+	msg = Clean(msg)
+	if GetTime() <= Party.shareUntil and Party.IsShareReply(msg) then Party.seen[msg] = GetTime() end
+end
+
+-- a share reply shown only on screen: put it in the chat too, like the default log
+function Party.OnUIMessage(a1, a2)
+	if GetTime() > Party.shareUntil then return end
+	local msg = Clean(type(a2) == "string" and a2 or a1)
+	if not Party.IsShareReply(msg) then return end
+	C_Timer.After(0.3, function()
+		local t = Party.seen[msg]
+		if t and math.abs(GetTime() - t) < 2 then return end
+		local info = ChatTypeInfo and ChatTypeInfo.SYSTEM
+		DEFAULT_CHAT_FRAME:AddMessage(msg, info and info.r or 1, info and info.g or 1, info and info.b or 0)
+	end)
+end
+
 local function ActiveFilterCount()
 	local n = 0
 	for _, fl in ipairs(FILTERS) do
@@ -439,6 +525,7 @@ local function BuildQuestList()
 	wipe(questsByID)
 	totalQuests, shownQuests = 0, 0
 	local timeLeft = Timers.Read()
+	local units = db.showGroupCount and Party.Units() or {}
 	local n = C_QuestLog.GetNumQuestLogEntries() or 0
 	for i = 1, n do
 		local info = C_QuestLog.GetInfo(i)
@@ -463,6 +550,7 @@ local function BuildQuestList()
 					q.order = #current.quests
 					q.xp = GetQuestXP(q.questID)
 					if timeLeft[q.questID] then q.timerEnd = GetTime() + timeLeft[q.questID] end
+					if #units > 0 then q.group = Party.Members(q, units) end
 					current.quests[#current.quests + 1] = q
 					questsByID[q.questID] = q
 					shownQuests = shownQuests + 1
@@ -553,15 +641,34 @@ end
 -- Share / abandon
 ---------------------------------------------------------------------------
 
+-- Shares the way the default log and Questie do on Forever: select the quest,
+-- then share the selected quest (no log index), then put the selection back.
 local function ShareOne(questID)
-	local index = C_QuestLog.GetLogIndexForQuestID(questID)
+	if SafeCall(C_QuestLog.IsPushableQuest, questID) ~= true then return end
+	local q = questsByID[questID]
+	local link = GetQuestLink and Clean(SafeCall(GetQuestLink, questID))
+	Print(("Sharing %s"):format(link or ("|cffffd100[" .. (q and q.title or tostring(questID)) .. "]|r")))
+	Party.shareUntil = GetTime() + 60
+	local prev = C_QuestLog.GetSelectedQuest and Clean(SafeCall(C_QuestLog.GetSelectedQuest))
 	C_QuestLog.SetSelectedQuest(questID)
-	QuestLogPushQuest(index)
+	QuestLogPushQuest()
+	if type(prev) == "number" and prev > 0 and prev ~= questID then
+		SafeCall(C_QuestLog.SetSelectedQuest, prev)
+	end
 end
 
+-- Only ever abandons the quest that was confirmed: if the game's abandon
+-- target is some other quest, skip it.
 local function AbandonOne(questID)
+	local index = C_QuestLog.GetLogIndexForQuestID(questID)
+	if not index or index < 1 then return end
 	C_QuestLog.SetSelectedQuest(questID)
 	C_QuestLog.SetAbandonQuest()
+	local target = C_QuestLog.GetAbandonQuest and Clean(SafeCall(C_QuestLog.GetAbandonQuest))
+	if type(target) == "number" and target ~= questID then
+		local q = questsByID[questID]
+		error(("Skipped |cffffd100%s|r|cffff5555: the game picked a different quest to abandon."):format(q and q.title or tostring(questID)), 0)
+	end
 	C_QuestLog.AbandonQuest()
 end
 
@@ -569,18 +676,18 @@ end
 local function RunQueue(ids, delay, fn, onDone)
 	busy = true
 	UpdateBottom()
-	local i = 0
+	local i, done = 0, 0
 	local function step()
 		i = i + 1
 		local id = ids[i]
 		if not id then
 			busy = false
-			if onDone then onDone() end
+			if onDone then onDone(done) end
 			RequestRefresh()
 			return
 		end
 		local ok, err = pcall(fn, id)
-		if not ok then Print("|cffff5555" .. tostring(err) .. "|r") end
+		if ok then done = done + 1 else Print("|cffff5555" .. tostring(err) .. "|r") end
 		C_Timer.After(delay, step)
 	end
 	step()
@@ -599,8 +706,8 @@ local function ShareQuests(ids)
 		Print("Join a group first, there is nobody to share with.")
 		return
 	end
-	RunQueue(ids, 0.6, ShareOne, function()
-		Print(("Shared %d quest%s."):format(#ids, #ids == 1 and "" or "s"))
+	RunQueue(ids, 0.6, ShareOne, function(n)
+		Print(("Shared %d quest%s."):format(n, n == 1 and "" or "s"))
 		if mode == "share" then SetMode(nil) end
 	end)
 end
@@ -629,12 +736,13 @@ StaticPopupDialogs["QUESTLOGPLUS_ABANDON"] = {
 		local ids = pendingAbandon
 		pendingAbandon = nil
 		if not ids then return end
-		RunQueue(ids, 0.3, AbandonOne, function()
-			Print(("Abandoned %d quest%s."):format(#ids, #ids == 1 and "" or "s"))
+		RunQueue(ids, 0.3, AbandonOne, function(n)
+			Print(("Abandoned %d quest%s."):format(n, n == 1 and "" or "s"))
 			if mode == "abandon" then SetMode(nil) end
 		end)
 	end,
 	OnCancel = function() pendingAbandon = nil end,
+	OnHide = function() pendingAbandon = nil end,
 	timeout = 0,
 	whileDead = true,
 	hideOnEscape = true,
@@ -1318,6 +1426,10 @@ local function OnRowEnter(self)
 	if IsTracked(q.questID) then
 		GameTooltip:AddLine("Tracked", 0.3, 0.8, 1)
 	end
+	if q.group then
+		GameTooltip:AddLine(type(PARTY_QUEST_STATUS_ON) == "string" and PARTY_QUEST_STATUS_ON or "Group members on this quest:", 1, 0.82, 0)
+		for _, name in ipairs(q.group) do GameTooltip:AddLine("   " .. name, 1, 1, 1) end
+	end
 	if q.timerEnd then
 		GameTooltip:AddLine("Time left: " .. Timers.Format(q.timerEnd - GetTime()), 1, 0.82, 0)
 	end
@@ -1619,7 +1731,11 @@ local function SetupQuest(r, q, width)
 	r.title:ClearAllPoints()
 	r.title:SetPoint("TOPLEFT", r, "TOPLEFT", x, -4)
 	r.title:SetPoint("TOPRIGHT", (q.timerEnd and not timerBelow) and r.timer or r.xp, "TOPLEFT", -6, 1)
-	r.title:SetText(QuestTitle(q))
+	if q.group then
+		r.title:SetText(("|cffffffff[%d]|r %s"):format(#q.group, QuestTitle(q)))
+	else
+		r.title:SetText(QuestTitle(q))
+	end
 
 	-- sub lines: objectives, or the turn-in hint
 	local lines = {}
@@ -2759,6 +2875,8 @@ local OPTIONS = {
 	{ "completeMarker", "Completed quest border",
 		"Finished quests get a green border on the left. The yellow turn-in ? and the green title show either way." },
 	{ "trackedMarker", "Tracked quest border", "Tracked quests get a thin blue border on the right." },
+	{ "showGroupCount", "Group members on the quest",
+		"Shows [2] in front of a quest when 2 of your party or raid members are also on it, like the default log. Hover the quest to see who." },
 	{ "showLevel", "Show quest levels", "Shows [12] in front of each quest name." },
 	{ "completedFirst", "Ready-to-turn-in quests at the top", "Completed quests sort to the top of their zone." },
 
@@ -2945,9 +3063,9 @@ local function OnOff(v) return v and "|cff55ff55on|r" or "|cffff5555off|r" end
 local SLASH_TOGGLES = {
 	map = "showMap", popout = "detailPopout", rewards = "listRewards", items = "filterItems",
 	level = "showLevel", sort = "completedFirst", windows = "gameWindow",
-	panel = "hideDefaultMapPanel", key = "takeOverKey",
+	panel = "hideDefaultMapPanel", key = "takeOverKey", group = "showGroupCount",
 }
-local SLASH_ORDER = { "map", "popout", "rewards", "items", "level", "sort", "windows", "panel", "key" }
+local SLASH_ORDER = { "map", "popout", "rewards", "items", "level", "sort", "group", "windows", "panel", "key" }
 
 SLASH_QUESTLOGPLUS1 = "/qlp"
 SLASH_QUESTLOGPLUS2 = "/questlogplus"
@@ -2995,9 +3113,10 @@ for _, ev in ipairs({
 	"QUEST_LOG_UPDATE", "QUEST_ACCEPTED", "QUEST_REMOVED", "QUEST_TURNED_IN",
 	"QUEST_WATCH_LIST_CHANGED", "UNIT_QUEST_LOG_CHANGED", "GROUP_ROSTER_UPDATE",
 	"QUEST_DATA_LOAD_RESULT", "GET_ITEM_INFO_RECEIVED", "BAG_UPDATE_DELAYED",
+	"CHAT_MSG_SYSTEM", "UI_INFO_MESSAGE", "UI_ERROR_MESSAGE",
 }) do Register(ev) end
 
-events:SetScript("OnEvent", function(_, event, arg1)
+events:SetScript("OnEvent", function(_, event, arg1, arg2)
 	if event == "ADDON_LOADED" then
 		if arg1 == ADDON_NAME then
 			QuestLogPlusDB = QuestLogPlusDB or {}
@@ -3035,7 +3154,12 @@ events:SetScript("OnEvent", function(_, event, arg1)
 		wipe(rewardCache)
 		RequestRefresh()
 	elseif event == "UNIT_QUEST_LOG_CHANGED" then
-		if arg1 == "player" then RequestRefresh() end
+		-- group members' quests change the [2] counts
+		if arg1 == "player" or (db and db.showGroupCount and IsInGroup()) then RequestRefresh() end
+	elseif event == "CHAT_MSG_SYSTEM" then
+		Party.OnSystemMessage(arg1)
+	elseif event == "UI_INFO_MESSAGE" or event == "UI_ERROR_MESSAGE" then
+		Party.OnUIMessage(arg1, arg2)
 	else
 		RequestRefresh()
 	end
