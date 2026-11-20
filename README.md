@@ -5,11 +5,11 @@ A quest log for **World of Warcraft: Forever** (interface 16001). It looks like 
 - **`+1,250 xp`** on every quest, so you can see whether a quest is worth doing. The tooltip shows what % of a level that is.
 - **Completed quests stand out:** green row, green bar, check mark, "Ready to turn in", and who to return to. Zone headers show "N ready", and finished quests sort to the top.
 - **Rewards like the default log:** item buttons with icon, name and quality color. Hover one for the full item tooltip (stats, compare), shift-click to link it, ctrl-click to preview it.
-- **Reward icons in the list** (optional): small icons under each quest, with "Choose one:" / "You will receive:" above them.
-- **Has quest items filter:** only show quests you hold quest items for (a usable quest item, or at least one item collected for an objective).
+- **Reward icons in the list** (on by default): small icons under each quest, with "Choose one:" / "You will receive:" above them.
+- **Has quest items filter** (off by default): only show quests you hold quest items for (a usable quest item, or at least one item collected for an objective).
 - **Share mode** and **Abandon mode:** tick quests, or tick a whole zone with its "select all" box (clicking the zone name works too), then share or abandon them all at once. Zones can still be expanded and collapsed with the +/− button. Abandon asks for confirmation first.
-- **Map toggle:** the world map opens on the log's right side, scaled to the log's height. Drag the map's title bar to move it and its bottom-right corner to resize it; after that it stays where you put it.
-- **Details panel** (optional): quest details open in a separate panel on the log's right side, between the log and the map.
+- **Map toggle:** the world map is attached to the log's right side, scaled to the log's height, like one window. Drag the log or the map's title bar to move them together; resize the log and the map follows.
+- **Details panel** (on by default): quest details open in a separate panel on the log's right side, between the log and the map.
 - **Moves aside for game windows:** when the character sheet, spellbook, a vendor and so on would cover the log, it moves to their right and comes back when they close.
 - The log can be moved (drag it) and resized (bottom-right corner). Everything is remembered between sessions.
 
@@ -40,4 +40,4 @@ Click the gear in the log's top bar, type `/qlp config`, or open Options → Add
 
 ## Leatrix Maps
 
-If Leatrix Maps has "Enable movement" on, it puts the map back at its own saved spot whenever the map refreshes. Quest Log Plus moves it back right after, but you may see the map flicker. Turning off Leatrix Maps' map movement avoids that.
+If Leatrix Maps has "Enable movement" on, it puts the map back at its own saved spot whenever the map refreshes. Quest Log Plus docks it back to the log right after, but you may see the map flicker. Turning off Leatrix Maps' map movement avoids that.

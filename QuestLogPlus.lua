@@ -1,8 +1,8 @@
 -- Quest Log Plus  (World of Warcraft: Forever, interface 16001)
 --
 -- A stand-alone quest log window styled like the default one, with:
---   * a Show/Hide Map toggle: the world map opens on the log's right side,
---     scaled to the log's height; both windows can be moved and resized
+--   * a Show/Hide Map toggle: the world map is attached to the log's right
+--     side, scaled to the log's height, and moves with it
 --   * "+1,234 xp" on every quest
 --   * completed quests painted green with a check mark and "Ready to turn in"
 --   * rewards shown like the default log (hover for the item tooltip,
@@ -24,19 +24,14 @@ local DEFAULTS = {
 	completedFirst = true,      -- ready-to-turn-in quests sort to the top of each zone
 	takeOverKey = true,         -- the quest log key opens this log instead of the default one
 	hideDefaultMapPanel = true, -- close the map's own quest side panel when we open the map
-	listRewards = false,        -- small reward icons in the quest list
+	listRewards = true,         -- small reward icons in the quest list
 	filterItems = false,        -- only quests you hold quest items for
 	gameWindow = true,          -- move aside when game windows (character sheet, ...) open
-	detailPopout = false,       -- quest details open in a separate panel on the log's right side
+	detailPopout = true,        -- quest details open in a separate panel on the log's right side
 	popoutWidth = 360,
 	collapsed = {},
 	pos = nil,                  -- log position { point, relativePoint, x, y }
 	size = nil,                 -- log size { w, h }
-	map = {
-		detached = false,       -- false: map sits on the log's right side
-		x = nil, y = nil,       -- map top-left in UIParent units, once moved
-		scale = nil,            -- nil: scale the map to the log's height
-	},
 }
 
 local FRAME_W, FRAME_H = 384, 600
@@ -65,7 +60,7 @@ local TXT_ALSO = REWARD_ITEMS or "You will also receive:"
 
 local db
 local frame, inset, listScroll, listContent, detailScroll, detailContent
-local emptyText, headerText, mapButton, rewardsCheck, itemsCheck
+local emptyText, headerText, mapButton
 local rows = {}
 local groups = {}
 local questsByID = {}
@@ -522,14 +517,29 @@ local function SaveLogGeometry()
 	db.size = { frame:GetWidth(), frame:GetHeight() }
 end
 
+-- move the log (and everything attached to it) with the cursor
+local function StartLogMove()
+	logMoving = true
+	frame:StartMoving()
+end
+
+local function StopLogMove()
+	if not logMoving then return end
+	frame:StopMovingOrSizing()
+	logMoving = false
+	logPushed = false -- where you drop it is the new home position
+	SaveLogGeometry()
+	ApplyMapLayout()
+end
+
 ---------------------------------------------------------------------------
--- Map: sits on the log's right side, scaled to the log's height.
--- Moving or resizing the map (title bar / corner grip) saves its own
--- position and scale; after that it no longer follows the log.
+-- Map: attached to the right side of the log (or of the details panel when
+-- it is open), scaled to the log's height, like one window. Dragging the
+-- map's title bar moves the log and the map together.
 ---------------------------------------------------------------------------
 
 local mapApplied, mapOrigScale = false, nil
-local mapHandle, mapGrip, mapDriver, mapDrag
+local mapHandle
 
 local function CanChangeMap()
 	return WorldMapFrame and (not InCombatLockdown() or not WorldMapFrame:IsProtected())
@@ -543,14 +553,24 @@ local function MapActive()
 	return frame and frame:IsShown() and db.showMap and WorldMapFrame and WorldMapFrame:IsShown() and not MapMaximized()
 end
 
-local function AutoMapScale()
+-- the map scale that makes it exactly as tall as the log
+local function TargetMapScale()
 	local mapH = Clean(WorldMapFrame:GetHeight())
 	local mapScale = Clean(WorldMapFrame:GetScale())
 	local mapEff = Clean(WorldMapFrame:GetEffectiveScale())
 	local logEff = Clean(frame:GetEffectiveScale())
 	if not mapH or not mapScale or not mapEff or not logEff or mapH <= 0 or mapScale <= 0 then return end
 	local parentEff = mapEff / mapScale
-	return frame:GetHeight() * logEff / (mapH * parentEff)
+	local scale = frame:GetHeight() * logEff / (mapH * parentEff)
+	return math.min(2, math.max(0.2, scale))
+end
+
+-- where the map's top-left corner belongs, in UIParent units
+local function MapTarget()
+	local anchor = (popout and popout:IsShown()) and popout or frame
+	local lx, ly = TopLeftInUI(anchor)
+	if not lx then return end
+	return lx + anchor:GetWidth() * anchor:GetEffectiveScale() / UIParent:GetEffectiveScale() + 2, ly
 end
 
 local function RestoreMapDefaults()
@@ -558,7 +578,6 @@ local function RestoreMapDefaults()
 	mapApplied = false
 	if mapOrigScale then WorldMapFrame:SetScale(mapOrigScale) end
 	if mapHandle then mapHandle:Hide() end
-	if mapGrip then mapGrip:Hide() end
 end
 
 function ApplyMapLayout()
@@ -573,31 +592,18 @@ function ApplyMapLayout()
 		mapApplied = true
 	end
 
-	local scale = db.map.scale or AutoMapScale()
-	if scale then
-		scale = math.min(2, math.max(0.3, scale))
-		if math.abs(WorldMapFrame:GetScale() - scale) > 0.001 then WorldMapFrame:SetScale(scale) end
+	local scale = TargetMapScale()
+	if scale and math.abs(WorldMapFrame:GetScale() - scale) > 0.001 then
+		WorldMapFrame:SetScale(scale)
 	end
 
-	local x, y
-	if db.map.detached and db.map.x and db.map.y then
-		x, y = db.map.x, db.map.y
-	else
-		-- right of the details panel when it is open, else right of the log
-		local anchor = (popout and popout:IsShown()) and popout or frame
-		local lx, ly = TopLeftInUI(anchor)
-		if lx then
-			x = lx + anchor:GetWidth() * anchor:GetEffectiveScale() / UIParent:GetEffectiveScale() + 2
-			y = ly
-		end
-	end
+	local x, y = MapTarget()
 	if x and y then
 		local k = UIParent:GetEffectiveScale() / WorldMapFrame:GetEffectiveScale()
 		WorldMapFrame:ClearAllPoints()
 		WorldMapFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x * k, y * k)
 	end
 	if mapHandle then mapHandle:Show() end
-	if mapGrip then mapGrip:Show() end
 end
 
 -- run after the game (and Leatrix Maps) have finished placing the map
@@ -609,6 +615,24 @@ local function ScheduleMapLayout()
 		mapLayoutPending = false
 		ApplyMapLayout()
 	end)
+end
+
+-- If the game or another addon moves or rescales the map, dock it again.
+-- Checked a few times a second while the log is open.
+local mapWatchElapsed = 0
+local function WatchMap(elapsed)
+	mapWatchElapsed = mapWatchElapsed + (elapsed or 0)
+	if mapWatchElapsed < 0.2 then return end
+	mapWatchElapsed = 0
+	if not MapActive() or not CanChangeMap() then return end
+	local x, y = MapTarget()
+	local mx, my = TopLeftInUI(WorldMapFrame)
+	if not x or not mx then return end
+	local scale = TargetMapScale()
+	if math.abs(mx - x) > 1 or math.abs(my - y) > 1
+		or (scale and math.abs(WorldMapFrame:GetScale() - scale) > 0.005) then
+		ApplyMapLayout()
+	end
 end
 
 local function GetMapForQuest(questID)
@@ -629,11 +653,15 @@ end
 local function ShowMap()
 	if not WorldMapFrame then return end
 	if not WorldMapFrame:IsShown() then
-		local mapID = GetMapForQuest(view == "detail" and detailQuestID or nil)
+		local mapID = GetMapForQuest(detailQuestID)
 		if OpenWorldMap then SafeCall(OpenWorldMap, mapID) else SafeCall(ShowUIPanel, WorldMapFrame) end
-	elseif view == "detail" then
+	elseif detailQuestID then
 		local mapID = GetMapForQuest(detailQuestID)
 		if mapID then SafeCall(WorldMapFrame.SetMapID, WorldMapFrame, mapID) end
+	end
+	-- a full-screen map can't sit next to the log; use the windowed map
+	if WorldMapFrame:IsShown() and MapMaximized() and not InCombatLockdown() and WorldMapFrame.Minimize then
+		SafeCall(WorldMapFrame.Minimize, WorldMapFrame)
 	end
 	HideDefaultQuestPanel()
 	ScheduleMapLayout()
@@ -654,56 +682,6 @@ local function ToggleMapSetting()
 	SetOption("showMap", not db.showMap)
 end
 
-local function CursorInUI()
-	local x, y = GetCursorPosition()
-	x, y = Clean(x), Clean(y)
-	if not x or not y then return end
-	local s = UIParent:GetEffectiveScale()
-	return x / s, y / s
-end
-
-local function StopMapDrag()
-	mapDrag = nil
-	if mapDriver then mapDriver:Hide() end
-end
-
--- The map is moved by following the cursor rather than with StartMoving,
--- which can make the map jump when dragging starts.
-local function StartMapDrag(dragMode)
-	if not MapActive() or not CanChangeMap() then return end
-	local cx, cy = CursorInUI()
-	local left, top = TopLeftInUI(WorldMapFrame)
-	if not cx or not left then return end
-	local k = WorldMapFrame:GetEffectiveScale() / UIParent:GetEffectiveScale()
-	mapDrag = {
-		mode = dragMode, cx = cx, cy = cy, left = left, top = top,
-		scale = WorldMapFrame:GetScale(), h = WorldMapFrame:GetHeight() * k,
-	}
-	mapDriver:Show()
-end
-
-local function MapDragUpdate()
-	if not mapDrag or not IsMouseButtonDown("LeftButton") or not CanChangeMap() then
-		StopMapDrag()
-		return
-	end
-	local cx, cy = CursorInUI()
-	if not cx then return end
-	if mapDrag.mode == "move" then
-		db.map.detached = true
-		db.map.x = mapDrag.left + cx - mapDrag.cx
-		db.map.y = mapDrag.top + cy - mapDrag.cy
-	else
-		-- keep the top-left corner where it is and scale with the cursor
-		if db.map.detached then
-			db.map.x, db.map.y = mapDrag.left, mapDrag.top
-		end
-		local newH = math.max(150, mapDrag.h + (mapDrag.cy - cy))
-		db.map.scale = math.min(2, math.max(0.3, mapDrag.scale * newH / mapDrag.h))
-	end
-	ApplyMapLayout()
-end
-
 local mapHooked = false
 local function HookMap()
 	if mapHooked or not WorldMapFrame then return end
@@ -711,7 +689,7 @@ local function HookMap()
 
 	WorldMapFrame:HookScript("OnShow", ScheduleMapLayout)
 	WorldMapFrame:HookScript("OnHide", function()
-		StopMapDrag()
+		if logMoving and frame then StopLogMove() end
 		RestoreMapDefaults()
 	end)
 	-- the game (and Leatrix Maps) re-place the map on these; put it back after them
@@ -722,38 +700,18 @@ local function HookMap()
 		hooksecurefunc(WorldMapFrame, "OnFrameSizeChanged", ScheduleMapLayout)
 	end
 
-	mapDriver = CreateFrame("Frame")
-	mapDriver:Hide()
-	mapDriver:SetScript("OnUpdate", MapDragUpdate)
-
-	-- drag handle over the map's title bar (leaves the close/maximize buttons free)
+	-- the map's title bar moves the log and map together (close/maximize buttons stay free)
 	mapHandle = CreateFrame("Frame", nil, WorldMapFrame)
 	mapHandle:SetPoint("TOPLEFT", WorldMapFrame, "TOPLEFT", 60, 0)
 	mapHandle:SetPoint("TOPRIGHT", WorldMapFrame, "TOPRIGHT", -70, 0)
 	mapHandle:SetHeight(22)
 	mapHandle:SetFrameLevel(WorldMapFrame:GetFrameLevel() + 100)
 	mapHandle:EnableMouse(true)
-	mapHandle:SetScript("OnMouseDown", function(_, btn) if btn == "LeftButton" then StartMapDrag("move") end end)
-	mapHandle:SetScript("OnMouseUp", StopMapDrag)
-	mapHandle:SetScript("OnEnter", function(self)
-		GameTooltip:SetOwner(self, "ANCHOR_TOP")
-		GameTooltip:SetText("Drag to move the map", 1, 1, 1)
-		GameTooltip:AddLine("Drag the bottom-right corner to resize it.", 0.8, 0.8, 0.8)
-		GameTooltip:Show()
+	mapHandle:SetScript("OnMouseDown", function(_, btn)
+		if btn == "LeftButton" and frame and MapActive() then StartLogMove() end
 	end)
-	mapHandle:SetScript("OnLeave", HideTooltip)
+	mapHandle:SetScript("OnMouseUp", function() StopLogMove() end)
 	mapHandle:Hide()
-
-	mapGrip = CreateFrame("Button", nil, WorldMapFrame)
-	mapGrip:SetSize(18, 18)
-	mapGrip:SetPoint("BOTTOMRIGHT", WorldMapFrame, "BOTTOMRIGHT", -2, 2)
-	mapGrip:SetFrameLevel(WorldMapFrame:GetFrameLevel() + 100)
-	mapGrip:SetNormalTexture(GRIP_UP)
-	mapGrip:SetPushedTexture(GRIP_DOWN)
-	mapGrip:SetHighlightTexture(GRIP_HL)
-	mapGrip:SetScript("OnMouseDown", function(_, btn) if btn == "LeftButton" then StartMapDrag("size") end end)
-	mapGrip:SetScript("OnMouseUp", StopMapDrag)
-	mapGrip:Hide()
 end
 
 ---------------------------------------------------------------------------
@@ -1812,13 +1770,13 @@ local function CreateUI()
 		end
 	end
 	inset:ClearAllPoints()
-	inset:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -64)
+	inset:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -60)
 	inset:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, 30)
 
-	-- toolbar: count + map button, then the two toggles
+	-- toolbar: quest count, settings gear, map button
 	mapButton = MakeButton(frame, "Show Map", ToggleMapSetting)
 	mapButton:SetSize(84, 20)
-	mapButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -27)
+	mapButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -32)
 	UpdateMapButton()
 
 	local gear = CreateFrame("Button", nil, frame)
@@ -1843,18 +1801,10 @@ local function CreateUI()
 	gear:SetScript("OnLeave", HideTooltip)
 
 	headerText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-	headerText:SetPoint("TOPLEFT", frame, "TOPLEFT", 62, -31)
+	headerText:SetPoint("TOPLEFT", frame, "TOPLEFT", 62, -36)
 	headerText:SetPoint("TOPRIGHT", gear, "TOPLEFT", -6, -2)
 	headerText:SetJustifyH("LEFT")
 	headerText:SetWordWrap(false)
-
-	-- quick toggles (also in the settings window)
-	rewardsCheck = MakeCheck(frame, "Reward icons", "Show small reward icons under each quest.", "listRewards")
-	rewardsCheck:SetPoint("TOPLEFT", frame, "TOPLEFT", 58, -41)
-	itemsCheck = MakeCheck(frame, "Has quest items",
-		"Only show quests you hold quest items for: a usable quest item, or at least one item collected for an objective.",
-		"filterItems")
-	itemsCheck:SetPoint("LEFT", rewardsCheck.label, "RIGHT", 10, -1)
 
 	-- scroll areas
 	listScroll, listContent = MakeScroll(inset)
@@ -1916,20 +1866,15 @@ local function CreateUI()
 	end)
 
 	-- scripts
-	frame:SetScript("OnDragStart", function(self)
-		logMoving = true
-		self:StartMoving()
-	end)
-	frame:SetScript("OnDragStop", function(self)
-		self:StopMovingOrSizing()
-		logMoving = false
-		logPushed = false -- where you drop it is the new home position
-		SaveLogGeometry()
-		ApplyMapLayout()
-	end)
-	-- while the log moves or resizes, keep an attached map next to it
-	frame:SetScript("OnUpdate", function()
-		if logMoving and MapActive() then ApplyMapLayout() end
+	frame:SetScript("OnDragStart", StartLogMove)
+	frame:SetScript("OnDragStop", StopLogMove)
+	-- keep the attached map next to the log: live while moving/resizing, else a light check
+	frame:SetScript("OnUpdate", function(_, elapsed)
+		if logMoving then
+			if MapActive() then ApplyMapLayout() end
+		else
+			WatchMap(elapsed)
+		end
 	end)
 	frame:SetScript("OnShow", function()
 		if PlaySound and SOUNDKIT and SOUNDKIT.IG_QUEST_LOG_OPEN then PlaySound(SOUNDKIT.IG_QUEST_LOG_OPEN) end
@@ -2091,7 +2036,7 @@ end
 
 local OPTIONS = {
 	{ "showMap", "Show the map next to the quest log",
-		"Opens the world map on the log's right side, scaled to the log's height. Drag the map's title bar to move it and its bottom-right corner to resize it." },
+		"Attaches the world map to the log's right side, scaled to the log's height, like one window. Drag the map's title bar or the log to move them together; resize the log and the map follows." },
 	{ "detailPopout", "Open quest details in a separate panel",
 		"Clicking a quest opens its details in a panel on the log's right side (between the log and the map) instead of inside the log." },
 	{ "listRewards", "Reward icons in the quest list",
@@ -2146,7 +2091,6 @@ end
 
 local function ResetGeometry()
 	db.pos, db.size, db.popoutWidth = nil, nil, 360
-	db.map.detached, db.map.x, db.map.y, db.map.scale = false, nil, nil, nil
 	if frame then
 		RestoreLogGeometry()
 		AnchorPopout()
@@ -2266,6 +2210,14 @@ events:SetScript("OnEvent", function(_, event, arg1)
 	if event == "ADDON_LOADED" then
 		if arg1 == ADDON_NAME then
 			QuestLogPlusDB = QuestLogPlusDB or {}
+			-- 1.2: new defaults for settings saved by older versions
+			if (QuestLogPlusDB.settingsVersion or 1) < 2 then
+				QuestLogPlusDB.detailPopout = true
+				QuestLogPlusDB.listRewards = true
+				QuestLogPlusDB.filterItems = false
+				QuestLogPlusDB.map = nil
+				QuestLogPlusDB.settingsVersion = 2
+			end
 			CopyDefaults(DEFAULTS, QuestLogPlusDB)
 			db = QuestLogPlusDB
 		elseif arg1 == "Blizzard_WorldMap" then
