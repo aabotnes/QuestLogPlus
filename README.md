@@ -2,11 +2,16 @@
 
 A quest log for **World of Warcraft: Forever** (interface 16001). It looks like the default log and adds:
 
-- **Show Map / Hide Map** toggle: the world map opens docked beside the log and jumps to the zone of the quest you open.
 - **`+1,250 xp`** on every quest, so you can see whether a quest is worth doing. The tooltip shows what % of a level that is.
 - **Completed quests stand out:** green row, green bar, check mark, "Ready to turn in", and who to return to. Zone headers show "N ready", and finished quests sort to the top.
-- **Share mode** and **Abandon mode:** tick quests (or a whole zone), then share or abandon them all at once. Abandon asks for confirmation first.
-- Quest details page with objectives, rewards and description, plus Track / Share / Abandon buttons. Shift-click a quest in the list to track it.
+- **Rewards like the default log:** item buttons with icon, name and quality color. Hover one for the full item tooltip (stats, compare), shift-click to link it, ctrl-click to preview it.
+- **Reward icons in the list** (optional): small icons under each quest, with "Choose one:" / "You will receive:" above them.
+- **Has quest items filter:** only show quests you hold quest items for (a usable quest item, or at least one item collected for an objective).
+- **Share mode** and **Abandon mode:** tick quests, or tick a whole zone with its "select all" box (clicking the zone name works too), then share or abandon them all at once. Zones can still be expanded and collapsed with the +/− button. Abandon asks for confirmation first.
+- **Map toggle:** the world map opens on the log's right side, scaled to the log's height. Drag the map's title bar to move it and its bottom-right corner to resize it; after that it stays where you put it.
+- **Details panel** (optional): quest details open in a separate panel on the log's right side, between the log and the map.
+- **Moves aside for game windows:** when the character sheet, spellbook, a vendor and so on would cover the log, it moves to their right and comes back when they close.
+- The log can be moved (drag it) and resized (bottom-right corner). Everything is remembered between sessions.
 
 ## Install
 
@@ -14,14 +19,25 @@ Copy the `QuestLogPlus` folder to `World of Warcraft\_forever_\Interface\AddOns\
 
 The quest log key (L by default) opens Quest Log Plus. You can also bind a separate key under Key Bindings → AddOns.
 
-## Commands
+## Settings
+
+Click the gear in the log's top bar, type `/qlp config`, or open Options → AddOns → Quest Log Plus.
 
 | Command | Does |
 |---|---|
 | `/qlp` | Toggle the log |
-| `/qlp map` | Map on/off |
-| `/qlp key` | Give the quest log key back to the default log |
-| `/qlp level` | Show/hide quest levels |
+| `/qlp config` | Settings window |
+| `/qlp map` | Map next to the log on/off |
+| `/qlp popout` | Details in a separate panel on/off |
+| `/qlp rewards` | Reward icons in the list on/off |
+| `/qlp items` | Only quests with quest items on/off |
+| `/qlp level` | Show quest levels on/off |
 | `/qlp sort` | Completed quests first on/off |
-| `/qlp panel` | Close the map's own quest panel on/off |
-| `/qlp reset` | Reset window position |
+| `/qlp windows` | Move aside for game windows on/off |
+| `/qlp panel` | Close the map's own quest list on/off |
+| `/qlp key` | Quest log key opens Quest Log Plus on/off |
+| `/qlp reset` | Reset log, panel and map position/size |
+
+## Leatrix Maps
+
+If Leatrix Maps has "Enable movement" on, it puts the map back at its own saved spot whenever the map refreshes. Quest Log Plus moves it back right after, but you may see the map flicker. Turning off Leatrix Maps' map movement avoids that.

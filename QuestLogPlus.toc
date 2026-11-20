@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: Quest Log |cff33ff99Plus|r
-## Notes: Quest log with a map toggle, +XP per quest, loud "ready to turn in" marking, and batch share / abandon modes.
+## Notes: Quest log with +XP per quest, clear "ready to turn in" marking, default-style rewards, a resizable map beside the log, a details panel, a quest-items filter, and batch share / abandon.
 ## Author: you
-## Version: 1.0.0
+## Version: 1.1.0
 ## SavedVariables: QuestLogPlusDB
 ## IconTexture: Interface\Icons\INV_Misc_Book_08
 
