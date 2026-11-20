@@ -1,9 +1,11 @@
 ## Interface: 16001
-## Title: Quest Log |cff33ff99Plus|r
-## Notes: Quest log with +XP per quest, clear "ready to turn in" marking, default-style rewards, a resizable map beside the log, a details panel, a quest-items filter, and batch share / abandon.
-## Author: you
-## Version: 1.3.0
+## Title: Quest Log Plus
+## Notes: |cffc27dff[Soeta's]|r A quest log with +XP on every quest, clear "ready to turn in" marking, rewards with item tooltips, search and filters, the map attached beside it, and batch share / abandon. /qlp
+## Author: Soeta
+## Version: v1.3.1
+## Category: Quests
 ## SavedVariables: QuestLogPlusDB
 ## IconTexture: Interface\Icons\INV_Misc_Book_08
+## X-Website: https://github.com/aabotnes/QuestLogPlus
 
 QuestLogPlus.lua

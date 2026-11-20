@@ -1,4 +1,4 @@
-# Quest Log Plus
+# [Soeta's] Quest Log Plus
 
 A quest log for **World of Warcraft: Forever** (interface 16001). It looks like the default log and adds:
 

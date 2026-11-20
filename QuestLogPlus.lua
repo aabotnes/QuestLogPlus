@@ -15,7 +15,7 @@
 
 local ADDON_NAME = ...
 
-BINDING_HEADER_QUESTLOGPLUS = "Quest Log Plus"
+BINDING_HEADER_QUESTLOGPLUS = "|cffc27dff[Soeta's]|r Quest Log Plus"
 BINDING_NAME_QUESTLOGPLUS_TOGGLE = "Toggle Quest Log Plus"
 
 local DEFAULTS = {
@@ -45,31 +45,39 @@ local FILTERS = {
 	{ key = "filterTracked", label = "Tracked", tip = "Quests you are tracking." },
 }
 
-local FRAME_W, FRAME_H = 384, 600
-local MIN_W, MIN_H, MAX_W, MAX_H = 320, 380, 900, 1400
-local ICON = 20                 -- reward icon size in the list
-local READY_ICON = "Interface\\RaidFrame\\ReadyCheck-Ready"
-local FAILED_ICON = "Interface\\RaidFrame\\ReadyCheck-NotReady"
-local TURNIN_ATLAS = "QuestTurnin"
-local TURNIN_FILE = "Interface\\GossipFrame\\ActiveQuestIcon"
-local PLUS_TEX = "Interface\\Buttons\\UI-PlusButton-Up"
-local MINUS_TEX = "Interface\\Buttons\\UI-MinusButton-Up"
-local BOX_TEX = "Interface\\Buttons\\UI-CheckBox-Up"
-local BOXCHECK_TEX = "Interface\\Buttons\\UI-CheckBox-Check"
-local BOOK_ICON = "Interface\\Icons\\INV_Misc_Book_08"
-local QUESTION_ICON = 134400
-local ICON_BORDER = "Interface\\Common\\WhiteIconFrame"
-local GRIP_UP = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up"
-local GRIP_DOWN = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down"
-local GRIP_HL = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight"
+-- constants (one table: Lua allows only 200 locals in a file's main chunk)
+local K = {
+	TITLE = "|cffc27dff[Soeta's]|r |cff33ff99Quest Log Plus|r",
+	FRAME_W = 384,
+	FRAME_H = 600,
+	MIN_W = 320,
+	MIN_H = 380,
+	MAX_W = 900,
+	MAX_H = 1400,
+	ICON = 20, -- reward icon size in the list
+	READY_ICON = "Interface\\RaidFrame\\ReadyCheck-Ready",
+	FAILED_ICON = "Interface\\RaidFrame\\ReadyCheck-NotReady",
+	TURNIN_ATLAS = "QuestTurnin",
+	TURNIN_FILE = "Interface\\GossipFrame\\ActiveQuestIcon",
+	PLUS_TEX = "Interface\\Buttons\\UI-PlusButton-Up",
+	MINUS_TEX = "Interface\\Buttons\\UI-MinusButton-Up",
+	BOX_TEX = "Interface\\Buttons\\UI-CheckBox-Up",
+	BOXCHECK_TEX = "Interface\\Buttons\\UI-CheckBox-Check",
+	BOOK_ICON = "Interface\\Icons\\INV_Misc_Book_08",
+	QUESTION_ICON = 134400,
+	ICON_BORDER = "Interface\\Common\\WhiteIconFrame",
+	GRIP_UP = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up",
+	GRIP_DOWN = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down",
+	GRIP_HL = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight",
 
-local XP_COLOR = "|cff9fc8ff"
-local GREEN = "|cff55ff55"
-local GREY = "|cff9d9d9d"
+	XP_COLOR = "|cff9fc8ff",
+	GREEN = "|cff55ff55",
+	GREY = "|cff9d9d9d",
 
-local TXT_CHOOSE = REWARD_CHOICES or "You will be able to choose one of these rewards:"
-local TXT_RECEIVE = REWARD_ITEMS_ONLY or "You will receive:"
-local TXT_ALSO = REWARD_ITEMS or "You will also receive:"
+	TXT_CHOOSE = REWARD_CHOICES or "You will be able to choose one of these rewards:",
+	TXT_RECEIVE = REWARD_ITEMS_ONLY or "You will receive:",
+	TXT_ALSO = REWARD_ITEMS or "You will also receive:",
+}
 
 local db
 local frame, inset, listScroll, listContent, detailScroll, detailContent
@@ -109,7 +117,7 @@ local logPushed = false      -- the log is moved aside for a game window (its ho
 ---------------------------------------------------------------------------
 
 local function Print(msg)
-	DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99Quest Log Plus|r: " .. tostring(msg))
+	DEFAULT_CHAT_FRAME:AddMessage(K.TITLE .. ": " .. tostring(msg))
 end
 
 local function Pass(ok, ...)
@@ -189,19 +197,19 @@ end
 
 -- the yellow turn-in question mark
 local function SetTurnInIcon(tex)
-	if HasAtlas(TURNIN_ATLAS) then
-		tex:SetAtlas(TURNIN_ATLAS)
+	if HasAtlas(K.TURNIN_ATLAS) then
+		tex:SetAtlas(K.TURNIN_ATLAS)
 	else
-		tex:SetTexture(TURNIN_FILE)
+		tex:SetTexture(K.TURNIN_FILE)
 		tex:SetTexCoord(0, 1, 0, 1)
 	end
 end
 
 local function TurnInIconStr(size)
-	if HasAtlas(TURNIN_ATLAS) then
-		return ("|A:%s:%d:%d|a"):format(TURNIN_ATLAS, size, size)
+	if HasAtlas(K.TURNIN_ATLAS) then
+		return ("|A:%s:%d:%d|a"):format(K.TURNIN_ATLAS, size, size)
 	end
-	return IconStr(TURNIN_FILE, size)
+	return IconStr(K.TURNIN_FILE, size)
 end
 
 local function HideTooltip()
@@ -573,9 +581,9 @@ StaticPopupDialogs["QUESTLOGPLUS_ABANDON"] = {
 local function RestoreLogGeometry()
 	local s = db.size
 	if s and s[1] and s[2] then
-		frame:SetSize(math.min(MAX_W, math.max(MIN_W, s[1])), math.min(MAX_H, math.max(MIN_H, s[2])))
+		frame:SetSize(math.min(K.MAX_W, math.max(K.MIN_W, s[1])), math.min(K.MAX_H, math.max(K.MIN_H, s[2])))
 	else
-		frame:SetSize(FRAME_W, FRAME_H)
+		frame:SetSize(K.FRAME_W, K.FRAME_H)
 	end
 	frame:ClearAllPoints()
 	local p = db.pos
@@ -955,8 +963,8 @@ local function MakeCheck(parent, label, tooltip, key)
 	local cb = CreateFrame("CheckButton", nil, parent, tpl)
 	cb:SetSize(22, 22)
 	if not tpl then
-		cb:SetNormalTexture(BOX_TEX)
-		cb:SetCheckedTexture(BOXCHECK_TEX)
+		cb:SetNormalTexture(K.BOX_TEX)
+		cb:SetCheckedTexture(K.BOXCHECK_TEX)
 		cb:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight", "ADD")
 	end
 	local fs = cb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -1067,9 +1075,9 @@ end
 local function MakeGrip(parent)
 	local g = CreateFrame("Button", nil, parent)
 	g:SetSize(16, 16)
-	g:SetNormalTexture(GRIP_UP)
-	g:SetPushedTexture(GRIP_DOWN)
-	g:SetHighlightTexture(GRIP_HL)
+	g:SetNormalTexture(K.GRIP_UP)
+	g:SetPushedTexture(K.GRIP_DOWN)
+	g:SetHighlightTexture(K.GRIP_HL)
 	return g
 end
 
@@ -1198,11 +1206,11 @@ local function GetRowIcon(r, i)
 	local b = r.rIcons[i]
 	if not b then
 		b = CreateFrame("Button", nil, r)
-		b:SetSize(ICON, ICON)
+		b:SetSize(K.ICON, K.ICON)
 		b.Icon = b:CreateTexture(nil, "ARTWORK")
 		b.Icon:SetAllPoints()
 		b.Border = b:CreateTexture(nil, "OVERLAY")
-		b.Border:SetTexture(ICON_BORDER)
+		b.Border:SetTexture(K.ICON_BORDER)
 		b.Border:SetAllPoints()
 		b.Count = b:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
 		b.Count:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 2, -1)
@@ -1279,10 +1287,10 @@ local function CreateRow()
 	r.allBtn:SetPoint("LEFT", r, "LEFT", 22, 0)
 	r.allBox = r.allBtn:CreateTexture(nil, "ARTWORK")
 	r.allBox:SetAllPoints()
-	r.allBox:SetTexture(BOX_TEX)
+	r.allBox:SetTexture(K.BOX_TEX)
 	r.allCheck = r.allBtn:CreateTexture(nil, "OVERLAY")
 	r.allCheck:SetAllPoints()
-	r.allCheck:SetTexture(BOXCHECK_TEX)
+	r.allCheck:SetTexture(K.BOXCHECK_TEX)
 	r.allBtn:SetScript("OnClick", function() if r.kind == "header" then ToggleGroupSelect(r.data) end end)
 	r.allBtn:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -1292,10 +1300,10 @@ local function CreateRow()
 	r.allBtn:SetScript("OnLeave", HideTooltip)
 	r.box = r:CreateTexture(nil, "ARTWORK")
 	r.box:SetSize(18, 18)
-	r.box:SetTexture(BOX_TEX)
+	r.box:SetTexture(K.BOX_TEX)
 	r.boxCheck = r:CreateTexture(nil, "OVERLAY")
 	r.boxCheck:SetAllPoints(r.box)
-	r.boxCheck:SetTexture(BOXCHECK_TEX)
+	r.boxCheck:SetTexture(K.BOXCHECK_TEX)
 	r.icon = r:CreateTexture(nil, "ARTWORK")
 	r.icon:SetSize(16, 16)
 
@@ -1335,7 +1343,7 @@ local function SetupHeader(r, g, width)
 	r.bg:SetColorTexture(0, 0, 0, 0.35)
 
 	r.expandBtn:Show()
-	r.expand:SetTexture(IsCollapsed(g) and PLUS_TEX or MINUS_TEX)
+	r.expand:SetTexture(IsCollapsed(g) and K.PLUS_TEX or K.MINUS_TEX)
 
 	local titleX = 22
 	if mode then
@@ -1359,7 +1367,7 @@ local function SetupHeader(r, g, width)
 	if mode and nsel > 0 then
 		right = ("|cffffffff%d selected|r"):format(nsel)
 	elseif ready > 0 then
-		right = ("%s%d ready|r"):format(GREEN, ready)
+		right = ("%s%d ready|r"):format(K.GREEN, ready)
 	end
 	r.xp:SetText(right)
 	r.xp:ClearAllPoints()
@@ -1399,7 +1407,7 @@ local function SetupQuest(r, q, width)
 		if q.state == "complete" then
 			SetTurnInIcon(r.icon)
 		else
-			r.icon:SetTexture(FAILED_ICON)
+			r.icon:SetTexture(K.FAILED_ICON)
 			r.icon:SetTexCoord(0, 1, 0, 1)
 		end
 		r.icon:ClearAllPoints()
@@ -1411,7 +1419,7 @@ local function SetupQuest(r, q, width)
 
 	r.xp:ClearAllPoints()
 	r.xp:SetPoint("TOPRIGHT", r, "TOPRIGHT", -6, -5)
-	r.xp:SetText(q.xp > 0 and (XP_COLOR .. "+" .. FormatNumber(q.xp) .. " xp|r") or "")
+	r.xp:SetText(q.xp > 0 and (K.XP_COLOR .. "+" .. FormatNumber(q.xp) .. " xp|r") or "")
 
 	r.title:ClearAllPoints()
 	r.title:SetPoint("TOPLEFT", r, "TOPLEFT", x, -4)
@@ -1421,10 +1429,10 @@ local function SetupQuest(r, q, width)
 	-- sub lines: objectives, or the turn-in hint
 	local lines = {}
 	if q.state == "complete" then
-		lines[#lines + 1] = GREEN .. "Ready to turn in|r"
+		lines[#lines + 1] = K.GREEN .. "Ready to turn in|r"
 		local comp = Clean(SafeCall(GetQuestLogCompletionText, q.index))
 		if type(comp) == "string" and comp ~= "" then
-			lines[#lines + 1] = GREY .. comp .. "|r"
+			lines[#lines + 1] = K.GREY .. comp .. "|r"
 		end
 	elseif q.state == "failed" then
 		lines[#lines + 1] = "|cffff5555Failed|r"
@@ -1432,7 +1440,7 @@ local function SetupQuest(r, q, width)
 		for _, o in ipairs(GetObjectives(q.questID)) do
 			local text = Clean(o.text)
 			if text and text ~= "" then
-				lines[#lines + 1] = (o.finished and GREY or "|cffe6e6e6") .. "- " .. text .. "|r"
+				lines[#lines + 1] = (o.finished and K.GREY or "|cffe6e6e6") .. "- " .. text .. "|r"
 			end
 		end
 	end
@@ -1456,7 +1464,7 @@ local function SetupQuest(r, q, width)
 	local iconN, labelN = 0, 0
 	if db.listRewards then
 		local rw = GetRewards(q.questID)
-		local perRow = math.max(1, math.floor((innerW + 3) / (ICON + 3)))
+		local perRow = math.max(1, math.floor((innerW + 3) / (K.ICON + 3)))
 		local function Block(label, list)
 			if #list == 0 then return end
 			labelN = labelN + 1
@@ -1469,15 +1477,15 @@ local function SetupQuest(r, q, width)
 				iconN = iconN + 1
 				local b = GetRowIcon(r, iconN)
 				b.reward = d
-				b.Icon:SetTexture(d.texture or QUESTION_ICON)
+				b.Icon:SetTexture(d.texture or K.QUESTION_ICON)
 				if d.isUsable == false then b.Icon:SetVertexColor(1, 0.2, 0.2) else b.Icon:SetVertexColor(1, 1, 1) end
 				SetIconBorder(b.Border, d.quality)
 				b.Count:SetText((type(d.count) == "number" and d.count > 1) and d.count or "")
 				local col, ro = (i - 1) % perRow, math.floor((i - 1) / perRow)
 				b:ClearAllPoints()
-				b:SetPoint("TOPLEFT", r, "TOPLEFT", innerX + col * (ICON + 3), -(y + ro * (ICON + 3)))
+				b:SetPoint("TOPLEFT", r, "TOPLEFT", innerX + col * (K.ICON + 3), -(y + ro * (K.ICON + 3)))
 			end
-			y = y + math.ceil(#list / perRow) * (ICON + 3) + 1
+			y = y + math.ceil(#list / perRow) * (K.ICON + 3) + 1
 		end
 		Block("Choose one:", rw.choices)
 		Block(#rw.choices > 0 and "You will also receive:" or "You will receive:", rw.items)
@@ -1604,7 +1612,7 @@ local function GetRewardButton(i)
 		b.NameBg:SetPoint("TOPLEFT", b.Icon, "TOPRIGHT", -2, -2)
 		b.NameBg:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 0, 3)
 		b.Border = b:CreateTexture(nil, "OVERLAY")
-		b.Border:SetTexture(ICON_BORDER)
+		b.Border:SetTexture(K.ICON_BORDER)
 		b.Border:SetAllPoints(b.Icon)
 		b.Count = b:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
 		b.Count:SetPoint("BOTTOMRIGHT", b.Icon, "BOTTOMRIGHT", -2, 2)
@@ -1629,7 +1637,7 @@ end
 local function SetupRewardButton(b, d, w)
 	b.reward = d
 	b:SetWidth(w)
-	b.Icon:SetTexture(d.texture or QUESTION_ICON)
+	b.Icon:SetTexture(d.texture or K.QUESTION_ICON)
 	if d.isUsable == false then b.Icon:SetVertexColor(1, 0.2, 0.2) else b.Icon:SetVertexColor(1, 1, 1) end
 	SetIconBorder(b.Border, d.quality)
 	b.Count:SetText((type(d.count) == "number" and d.count > 1) and d.count or "")
@@ -1690,12 +1698,12 @@ local function RenderDetail(q)
 		detail.statusBg:SetColorTexture(0.10, 0.50, 0.10, 0.35)
 		detail.statusBg:Show()
 		y = y + 4
-		Text(detail.status, TurnInIconStr(18) .. " " .. GREEN .. "READY TO TURN IN|r" .. extra, 14)
+		Text(detail.status, TurnInIconStr(18) .. " " .. K.GREEN .. "READY TO TURN IN|r" .. extra, 14)
 	elseif q.state == "failed" then
 		detail.statusBg:SetColorTexture(0.5, 0.08, 0.08, 0.30)
 		detail.statusBg:Show()
 		y = y + 4
-		Text(detail.status, IconStr(FAILED_ICON, 18) .. " |cffff5555FAILED|r", 14)
+		Text(detail.status, IconStr(K.FAILED_ICON, 18) .. " |cffff5555FAILED|r", 14)
 	else
 		detail.statusBg:Hide()
 		Text(detail.status, nil)
@@ -1709,7 +1717,7 @@ local function RenderDetail(q)
 		local text = Clean(o.text)
 		if text and text ~= "" then
 			if o.finished then
-				objLines[#objLines + 1] = IconStr(READY_ICON, 14) .. " " .. GREY .. text .. "|r"
+				objLines[#objLines + 1] = IconStr(K.READY_ICON, 14) .. " " .. K.GREY .. text .. "|r"
 			else
 				objLines[#objLines + 1] = "- " .. text
 			end
@@ -1734,18 +1742,18 @@ local function RenderDetail(q)
 	if q.xp > 0 then
 		local pct = LevelPercent(q.xp)
 		extras[#extras + 1] = ("%s: %s+%s|r%s"):format(EXPERIENCE_COLON and EXPERIENCE_COLON:gsub(":%s*$", "") or "Experience",
-			XP_COLOR, FormatNumber(q.xp), pct and (GREY .. "  (" .. pct .. "% of a level)|r") or "")
+			K.XP_COLOR, FormatNumber(q.xp), pct and (K.GREY .. "  (" .. pct .. "% of a level)|r") or "")
 	end
 	local hasRewards = #rw.choices > 0 or #rw.items > 0 or #extras > 0
 	Text(detail.rewHeader, hasRewards and (QUEST_REWARDS or "Rewards") or nil, 6)
 	if #rw.choices > 0 then
-		Text(detail.choiceLabel, TXT_CHOOSE, 6)
+		Text(detail.choiceLabel, K.TXT_CHOOSE, 6)
 		Items(rw.choices)
 	else
 		Text(detail.choiceLabel, nil)
 	end
 	if #rw.items > 0 or #extras > 0 then
-		Text(detail.itemsLabel, #rw.choices > 0 and TXT_ALSO or TXT_RECEIVE, 6)
+		Text(detail.itemsLabel, #rw.choices > 0 and K.TXT_ALSO or K.TXT_RECEIVE, 6)
 		if #rw.items > 0 then Items(rw.items) end
 	else
 		Text(detail.itemsLabel, nil)
@@ -2000,10 +2008,10 @@ local function CreatePopout()
 	popout:EnableMouse(true)
 	popout:SetResizable(true)
 	if popout.SetResizeBounds then
-		popout:SetResizeBounds(280, MIN_H, 700, MAX_H)
+		popout:SetResizeBounds(280, K.MIN_H, 700, K.MAX_H)
 	elseif popout.SetMinResize then
-		popout:SetMinResize(280, MIN_H)
-		popout:SetMaxResize(700, MAX_H)
+		popout:SetMinResize(280, K.MIN_H)
+		popout:SetMaxResize(700, K.MAX_H)
 	end
 	SetFrameTitle(popout, "Quest Details")
 	popout.CloseButton:SetScript("OnClick", function()
@@ -2078,10 +2086,10 @@ local function CreateUI()
 	frame:SetMovable(true)
 	frame:SetResizable(true)
 	if frame.SetResizeBounds then
-		frame:SetResizeBounds(MIN_W, MIN_H, MAX_W, MAX_H)
+		frame:SetResizeBounds(K.MIN_W, K.MIN_H, K.MAX_W, K.MAX_H)
 	elseif frame.SetMinResize then
-		frame:SetMinResize(MIN_W, MIN_H)
-		frame:SetMaxResize(MAX_W, MAX_H)
+		frame:SetMinResize(K.MIN_W, K.MIN_H)
+		frame:SetMaxResize(K.MAX_W, K.MAX_H)
 	end
 	frame:EnableMouse(true)
 	frame:RegisterForDrag("LeftButton")
@@ -2106,7 +2114,7 @@ local function CreateUI()
 		t:SetText(QUEST_LOG or "Quest Log")
 	end
 	if frame.SetPortraitToAsset then
-		SafeCall(frame.SetPortraitToAsset, frame, BOOK_ICON)
+		SafeCall(frame.SetPortraitToAsset, frame, K.BOOK_ICON)
 	end
 
 	-- close button
@@ -2588,7 +2596,7 @@ function QuestLogPlus_ToggleSettings()
 		settingsFrame:RegisterForDrag("LeftButton")
 		settingsFrame:SetScript("OnDragStart", settingsFrame.StartMoving)
 		settingsFrame:SetScript("OnDragStop", settingsFrame.StopMovingOrSizing)
-		SetFrameTitle(settingsFrame, "Quest Log Plus Settings")
+		SetFrameTitle(settingsFrame, K.TITLE .. " Settings")
 		local bottom = BuildOptions(settingsFrame, 14, -32)
 		settingsFrame:SetSize(330, -bottom + 14)
 		settingsFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 60)
@@ -2605,7 +2613,7 @@ local function RegisterBlizzardOptions()
 	local panel = CreateFrame("Frame")
 	local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 	title:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -16)
-	title:SetText("Quest Log Plus")
+	title:SetText(K.TITLE)
 	BuildOptions(panel, 14, -48)
 	panel:SetScript("OnShow", SyncChecks)
 	local ok, category = pcall(Settings.RegisterCanvasLayoutCategory, panel, "Quest Log Plus")
