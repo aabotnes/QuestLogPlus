@@ -1,5 +1,9 @@
 # Quest Log Plus
 
+## v1.4.8
+
+- The marker settings are now **Completed quest border** and **Tracked quest border** and only show or hide the borders. The yellow turn-in ? and the green title on finished quests always show.
+
 ## v1.4.7
 
 - **New settings:** *Completed quest marker* (green bar, yellow ? and green title) and *Tracked quest marker* (thin bar on the right), each on its own, both on by default.

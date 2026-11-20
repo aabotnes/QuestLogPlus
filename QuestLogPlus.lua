@@ -28,8 +28,8 @@ local DEFAULTS = {
 	showXP = true,              -- "+1,250 xp" on each quest in the list
 	readyText = true,           -- "Ready to turn in" / "Failed" text under finished and failed quests
 	selectOnMap = true,         -- picking a quest while the map is shown selects (super-tracks) it on the map
-	trackedMarker = true,       -- thin bar on the right of tracked quests
-	completeMarker = true,      -- green bar, yellow ? and green title on finished quests
+	trackedMarker = true,       -- thin border on the right of tracked quests
+	completeMarker = true,      -- green border on the left of finished quests
 	tooltipObjectives = true,   -- quest objective text in the quest tooltip
 	listObjectives = true,      -- objective progress lines under each quest in the list
 	filterItems = false,        -- filter: only quests you hold quest items for
@@ -1582,8 +1582,7 @@ local function SetupQuest(r, q, width)
 		r.boxCheck:Hide()
 	end
 
-	local completeMark = q.state == "complete" and db.completeMarker
-	if completeMark or q.state == "failed" then
+	if q.state == "complete" or q.state == "failed" then
 		r.icon:Show()
 		if q.state == "complete" then
 			SetTurnInIcon(r.icon)
@@ -1734,7 +1733,7 @@ local function SetupQuest(r, q, width)
 			r.accent:SetColorTexture(1, 0.3, 0.2, 1)
 		end
 		r.accent:Show()
-	elseif completeMark then
+	elseif q.state == "complete" and db.completeMarker then
 		r.bg:SetColorTexture(0, 0, 0, 0)
 		r.accent:SetColorTexture(0.35, 1, 0.35, 1)
 		r.accent:Show()
@@ -1747,7 +1746,7 @@ local function SetupQuest(r, q, width)
 		r.accent:Hide()
 	end
 
-	if completeMark then
+	if q.state == "complete" then
 		r.title:SetTextColor(0.45, 1, 0.45)
 	elseif q.state == "failed" then
 		r.title:SetTextColor(1, 0.35, 0.35)
@@ -2757,9 +2756,9 @@ local OPTIONS = {
 		"Shows each quest's objective progress (like \"3/10 Kobold Vermin slain\") under it in the list." },
 	{ "listRewards", "Reward icons in the quest list",
 		"Small reward icons and the gold under each quest, after \"Choose one\" / \"You will receive\". Hover an icon for the item tooltip." },
-	{ "completeMarker", "Completed quest marker",
-		"Finished quests get a green bar on the left, the yellow turn-in ? and a green title." },
-	{ "trackedMarker", "Tracked quest marker", "Tracked quests get a thin blue bar on the right." },
+	{ "completeMarker", "Completed quest border",
+		"Finished quests get a green border on the left. The yellow turn-in ? and the green title show either way." },
+	{ "trackedMarker", "Tracked quest border", "Tracked quests get a thin blue border on the right." },
 	{ "showLevel", "Show quest levels", "Shows [12] in front of each quest name." },
 	{ "completedFirst", "Ready-to-turn-in quests at the top", "Completed quests sort to the top of their zone." },
 
