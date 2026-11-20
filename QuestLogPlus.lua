@@ -25,6 +25,8 @@ local DEFAULTS = {
 	takeOverKey = true,         -- the quest log key opens this log instead of the default one
 	hideDefaultMapPanel = true, -- close the map's own quest side panel when we open the map
 	listRewards = true,         -- small reward icons in the quest list
+	tooltipObjectives = true,   -- quest objective text in the quest tooltip
+	listObjectives = true,      -- objective progress lines under each quest in the list
 	filterItems = false,        -- filter: only quests you hold quest items for
 	filterReady = false,        -- filter: only quests ready to turn in
 	filterTracked = false,      -- filter: only tracked quests
@@ -1214,8 +1216,11 @@ local function OnRowEnter(self)
 		GameTooltip:AddLine("Failed", 1, 0.3, 0.3)
 	end
 	-- the quest's objective text ("Bring 8 Forked Mudrock Tongues to ..."), then progress
-	local _, objText = SafeCall(GetQuestLogQuestText, q.index)
-	objText = Clean(objText)
+	local objText
+	if db.tooltipObjectives then
+		local _, t = SafeCall(GetQuestLogQuestText, q.index)
+		objText = Clean(t)
+	end
 	if type(objText) == "string" and objText ~= "" then
 		GameTooltip:AddLine(" ")
 		GameTooltip:AddLine(QUEST_OBJECTIVES or "Quest Objectives", 1, 0.82, 0)
@@ -1489,7 +1494,7 @@ local function SetupQuest(r, q, width)
 		end
 	elseif q.state == "failed" then
 		lines[#lines + 1] = "|cffff5555Failed|r"
-	else
+	elseif db.listObjectives then
 		for _, o in ipairs(GetObjectives(q.questID)) do
 			local text = Clean(o.text)
 			if text and text ~= "" then
@@ -2558,6 +2563,10 @@ local OPTIONS = {
 		"Clicking a quest opens its details in a panel on the log's right side (between the log and the map) instead of inside the log." },
 	{ "listRewards", "Reward icons in the quest list",
 		"Small reward icons under each quest, with \"Choose one\" / \"You will receive\" above them. Hover an icon for the item tooltip." },
+	{ "listObjectives", "Objective progress in the quest list",
+		"Shows each quest's objective progress (like \"3/10 Kobold Vermin slain\") under it in the list." },
+	{ "tooltipObjectives", "Objective text in quest tooltips",
+		"Shows the quest's objective text (like \"Bring 8 Forked Mudrock Tongues to ...\") when you hover a quest." },
 	{ "showLevel", "Show quest levels", "Shows [12] in front of each quest name." },
 	{ "completedFirst", "Ready-to-turn-in quests at the top", "Completed quests sort to the top of their zone." },
 	{ "gameWindow", "Move aside for game windows",
