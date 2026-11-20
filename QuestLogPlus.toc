@@ -1,0 +1,9 @@
+## Interface: 16001
+## Title: Quest Log |cff33ff99Plus|r
+## Notes: Quest log with a map toggle, +XP per quest, loud "ready to turn in" marking, and batch share / abandon modes.
+## Author: you
+## Version: 1.0.0
+## SavedVariables: QuestLogPlusDB
+## IconTexture: Interface\Icons\INV_Misc_Book_08
+
+QuestLogPlus.lua

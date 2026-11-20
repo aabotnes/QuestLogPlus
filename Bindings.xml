@@ -1,0 +1,5 @@
+<Bindings>
+	<Binding name="QUESTLOGPLUS_TOGGLE" header="QUESTLOGPLUS" category="ADDONS">
+		QuestLogPlus_Toggle()
+	</Binding>
+</Bindings>
