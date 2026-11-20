@@ -1,5 +1,10 @@
 # Quest Log Plus
 
+## v1.4.7
+
+- **New settings:** *Completed quest marker* (green bar, yellow ? and green title) and *Tracked quest marker* (thin bar on the right), each on its own, both on by default.
+- **Settings are grouped:** Quest list, Tooltips, Details & map, and Window & keys, in two columns, with *Check / uncheck all* at the top.
+
 ## v1.4.6
 
 - **More compact reward row:** the icons and the gold now follow their label on the same line ("Choose one: [icons]  You will also receive: [icon] 1 [gold]"). Both parts share one line when they fit and wrap onto the next line when they don't.

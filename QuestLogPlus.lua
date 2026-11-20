@@ -28,6 +28,8 @@ local DEFAULTS = {
 	showXP = true,              -- "+1,250 xp" on each quest in the list
 	readyText = true,           -- "Ready to turn in" / "Failed" text under finished and failed quests
 	selectOnMap = true,         -- picking a quest while the map is shown selects (super-tracks) it on the map
+	trackedMarker = true,       -- thin bar on the right of tracked quests
+	completeMarker = true,      -- green bar, yellow ? and green title on finished quests
 	tooltipObjectives = true,   -- quest objective text in the quest tooltip
 	listObjectives = true,      -- objective progress lines under each quest in the list
 	filterItems = false,        -- filter: only quests you hold quest items for
@@ -1580,7 +1582,8 @@ local function SetupQuest(r, q, width)
 		r.boxCheck:Hide()
 	end
 
-	if q.state == "complete" or q.state == "failed" then
+	local completeMark = q.state == "complete" and db.completeMarker
+	if completeMark or q.state == "failed" then
 		r.icon:Show()
 		if q.state == "complete" then
 			SetTurnInIcon(r.icon)
@@ -1731,7 +1734,7 @@ local function SetupQuest(r, q, width)
 			r.accent:SetColorTexture(1, 0.3, 0.2, 1)
 		end
 		r.accent:Show()
-	elseif q.state == "complete" then
+	elseif completeMark then
 		r.bg:SetColorTexture(0, 0, 0, 0)
 		r.accent:SetColorTexture(0.35, 1, 0.35, 1)
 		r.accent:Show()
@@ -1744,7 +1747,7 @@ local function SetupQuest(r, q, width)
 		r.accent:Hide()
 	end
 
-	if q.state == "complete" then
+	if completeMark then
 		r.title:SetTextColor(0.45, 1, 0.45)
 	elseif q.state == "failed" then
 		r.title:SetTextColor(1, 0.35, 0.35)
@@ -1752,7 +1755,7 @@ local function SetupQuest(r, q, width)
 		r.title:SetTextColor(QuestColor(q))
 	end
 
-	r.track:SetShown(IsTracked(q.questID))
+	r.track:SetShown(db.trackedMarker and IsTracked(q.questID) or false)
 
 	local isCurrent = popout and popout:IsShown() and detailQuestID == q.questID
 	r.cur:SetShown(isCurrent and not isSel and true or false)
@@ -2744,34 +2747,46 @@ end
 -- Settings
 ---------------------------------------------------------------------------
 
+-- settings, grouped under headings; "column = 2" starts the second column
 local OPTIONS = {
-	{ "showMap", "Show the map next to the quest log",
-		"Attaches the world map to the log's right side, scaled to the log's height, like one window. Drag the map's title bar or the log to move them together; resize the log and the map follows." },
-	{ "detailPopout", "Open quest details in a separate panel",
-		"Clicking a quest opens its details in a panel on the log's right side (between the log and the map) instead of inside the log." },
-	{ "listRewards", "Reward icons in the quest list",
-		"Small reward icons under each quest, with \"Choose one\" / \"You will receive\" above them. Hover an icon for the item tooltip." },
-	{ "listObjectives", "Objective progress in the quest list",
-		"Shows each quest's objective progress (like \"3/10 Kobold Vermin slain\") under it in the list." },
-	{ "tooltipObjectives", "Objective text in quest tooltips",
-		"Shows the quest's objective text (like \"Bring 8 Forked Mudrock Tongues to ...\") when you hover a quest." },
+	{ header = "Quest list" },
 	{ "showXP", "Show XP rewards", "Shows the experience each quest gives (like \"+1,250 xp\") on the right of each quest." },
 	{ "readyText", "Status text (\"Ready to turn in\" / \"Failed\")",
-		"Shows \"Ready to turn in\" and who to return to under finished quests, and \"Failed\" under failed ones. The icons and coloured bars stay either way." },
-	{ "selectOnMap", "Select the quest on the map",
-		"When the map is shown, picking a quest in the log selects it on the map: it becomes the quest the map highlights and the quest arrow points to." },
+		"Shows \"Ready to turn in\" and who to return to under finished quests, and \"Failed\" under failed ones." },
+	{ "listObjectives", "Objective progress in the quest list",
+		"Shows each quest's objective progress (like \"3/10 Kobold Vermin slain\") under it in the list." },
+	{ "listRewards", "Reward icons in the quest list",
+		"Small reward icons and the gold under each quest, after \"Choose one\" / \"You will receive\". Hover an icon for the item tooltip." },
+	{ "completeMarker", "Completed quest marker",
+		"Finished quests get a green bar on the left, the yellow turn-in ? and a green title." },
+	{ "trackedMarker", "Tracked quest marker", "Tracked quests get a thin blue bar on the right." },
 	{ "showLevel", "Show quest levels", "Shows [12] in front of each quest name." },
 	{ "completedFirst", "Ready-to-turn-in quests at the top", "Completed quests sort to the top of their zone." },
-	{ "gameWindow", "Move aside for game windows",
-		"When the character sheet, spellbook, a vendor or another game window would cover the log, the log moves to its right, and moves back when it closes." },
+
+	{ header = "Tooltips", column = 2 },
+	{ "tooltipObjectives", "Objective text in quest tooltips",
+		"Shows the quest's objective text (like \"Bring 8 Forked Mudrock Tongues to ...\") when you hover a quest." },
+
+	{ header = "Details & map", column = 2 },
+	{ "detailPopout", "Open quest details in a separate panel",
+		"Clicking a quest opens its details in a panel on the log's right side (between the log and the map) instead of inside the log." },
+	{ "showMap", "Show the map next to the quest log",
+		"Attaches the world map to the log's right side, scaled to the log's height, like one window. Drag the map's title bar or the log to move them together; resize the log and the map follows." },
+	{ "selectOnMap", "Select the quest on the map",
+		"When the map is shown, picking a quest in the log selects it on the map: it becomes the quest the map highlights and the quest arrow points to." },
 	{ "hideDefaultMapPanel", "Close the map's own quest list",
 		"When Quest Log Plus opens the map, close the map's built-in quest list so quests aren't shown twice." },
+	{ slider = "mapAlpha", label = "Map opacity", column = 2 },
+
+	{ header = "Window & keys", column = 2 },
+	{ "gameWindow", "Move aside for game windows",
+		"When the character sheet, spellbook, a vendor or another game window would cover the log, the log moves to its right, and moves back when it closes." },
 	{ "takeOverKey", "Quest log key opens Quest Log Plus",
 		"Your quest log key binding (L by default) opens this log. Turn it off to get the default quest log back on that key." },
 }
 
 local OPTION_LABEL = {}
-for _, o in ipairs(OPTIONS) do OPTION_LABEL[o[1]] = o[2] end
+for _, o in ipairs(OPTIONS) do if o[1] then OPTION_LABEL[o[1]] = o[2] end end
 for _, fl in ipairs(FILTERS) do OPTION_LABEL[fl.key] = "Filter: " .. fl.label end
 
 local function SyncChecks()
@@ -2825,7 +2840,7 @@ local function BuildOptions(parent, x, y)
 	-- check / uncheck all (the quest log key setting is left alone, so L keeps working)
 	local function ForAll(fn)
 		for _, o in ipairs(OPTIONS) do
-			if o[1] ~= "takeOverKey" then fn(o[1]) end
+			if o[1] and o[1] ~= "takeOverKey" then fn(o[1]) end
 		end
 	end
 	local allBox = MakeCheck(parent, "Check / uncheck all",
@@ -2843,19 +2858,42 @@ local function BuildOptions(parent, x, y)
 	allBox:SetChecked(allBox.getter())
 	allBox:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
 	y = y - 30
+
+	-- two columns of grouped settings
+	local top, colX, bottom = y, { x, x + 300 }, y
+	local col, started2 = 1, false
 	for _, o in ipairs(OPTIONS) do
-		local cb = MakeCheck(parent, o[2], o[3], o[1])
-		cb:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
-		y = y - 26
-	end
-	local alpha = MakeSlider(parent, "Map opacity", 0.2, 1, "mapAlpha", function(v)
-		if MapActive() and CanChangeMap() then
-			WorldMapFrame:SetAlpha(v)
-			mapAlphaSet = v
+		if o.column == 2 and not started2 then
+			started2, col, y = true, 2, top
 		end
-	end)
-	alpha:SetPoint("TOPLEFT", parent, "TOPLEFT", x + 6, y - 16)
-	y = y - 42
+		local cx = colX[col]
+		if o.header then
+			local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+			fs:SetPoint("TOPLEFT", parent, "TOPLEFT", cx + 2, y - 6)
+			fs:SetText(o.header)
+			local line = parent:CreateTexture(nil, "ARTWORK")
+			line:SetColorTexture(1, 0.82, 0, 0.25)
+			line:SetHeight(1)
+			line:SetPoint("TOPLEFT", parent, "TOPLEFT", cx + 2, y - 22)
+			line:SetWidth(270)
+			y = y - 28
+		elseif o.slider then
+			local sl = MakeSlider(parent, o.label, 0.2, 1, o.slider, function(v)
+				if MapActive() and CanChangeMap() then
+					WorldMapFrame:SetAlpha(v)
+					mapAlphaSet = v
+				end
+			end)
+			sl:SetPoint("TOPLEFT", parent, "TOPLEFT", cx + 8, y - 18)
+			y = y - 44
+		else
+			local cb = MakeCheck(parent, o[2], o[3], o[1])
+			cb:SetPoint("TOPLEFT", parent, "TOPLEFT", cx, y)
+			y = y - 26
+		end
+		bottom = math.min(bottom, y)
+	end
+	y = bottom - 6
 	local reset = MakeButton(parent, "Reset window positions", ResetGeometry)
 	reset:SetSize(190, 22)
 	reset:SetPoint("TOPLEFT", parent, "TOPLEFT", x + 4, y - 8)
@@ -2876,7 +2914,7 @@ function QuestLogPlus_ToggleSettings()
 		settingsFrame:SetScript("OnDragStop", settingsFrame.StopMovingOrSizing)
 		SetFrameTitle(settingsFrame, K.TITLE .. " Settings")
 		local bottom = BuildOptions(settingsFrame, 14, -32)
-		settingsFrame:SetSize(330, -bottom + 14)
+		settingsFrame:SetSize(620, -bottom + 14)
 		settingsFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 60)
 		settingsFrame:SetScript("OnShow", SyncChecks)
 		settingsFrame:Hide()
