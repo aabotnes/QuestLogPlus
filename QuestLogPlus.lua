@@ -890,6 +890,18 @@ local function HookMap()
 	mapHooked = true
 
 	WorldMapFrame:HookScript("OnShow", ScheduleMapLayout)
+	-- The game's map fader sets the map's opacity while you move (back to full,
+	-- even with map fade turned off). Keep the opacity setting as the most opaque
+	-- the attached map gets; a fade below it is left alone.
+	local fixingAlpha = false
+	hooksecurefunc(WorldMapFrame, "SetAlpha", function(self, a)
+		if fixingAlpha or not mapAlphaSet or not MapActive() then return end
+		if type(a) == "number" and not IsSecret(a) and a > db.mapAlpha + 0.001 then
+			fixingAlpha = true
+			self:SetAlpha(db.mapAlpha)
+			fixingAlpha = false
+		end
+	end)
 	WorldMapFrame:HookScript("OnHide", function()
 		if logMoving and frame then StopLogMove() end
 		RestoreMapDefaults()

@@ -2,7 +2,7 @@
 ## Title: Quest Log Plus
 ## Notes: |cffc27dff[Soeta's]|r A quest log with +XP on every quest, clear "ready to turn in" marking, rewards with item tooltips, search and filters, the map attached beside it, and batch share / abandon. /qlp
 ## Author: Soeta
-## Version: v1.3.1
+## Version: v1.3.2
 ## Category: Quests
 ## SavedVariables: QuestLogPlusDB
 ## IconTexture: Interface\Icons\INV_Misc_Book_08
