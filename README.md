@@ -3,6 +3,7 @@
 A quest log for **World of Warcraft: Forever** (interface 16001). It looks like the default log and adds:
 
 - **`+1,250 xp`** on every quest, so you can see whether a quest is worth doing. The tooltip shows what % of a level that is.
+- **Tracked quests** have a thin cyan bar on the right edge of the row (shift-click a quest to track or untrack it).
 - **Completed quests stand out:** green row, green bar, check mark, "Ready to turn in", and who to return to. Zone headers show "N ready", and finished quests sort to the top.
 - **Rewards like the default log:** item buttons with icon, name and quality color. Hover one for the full item tooltip (stats, compare), shift-click to link it, ctrl-click to preview it.
 - **Reward icons in the list** (on by default): small icons under each quest, with "Choose one:" / "You will receive:" above them.
@@ -40,4 +41,4 @@ Click the gear in the log's top bar, type `/qlp config`, or open Options → Add
 
 ## Leatrix Maps
 
-If Leatrix Maps has "Enable movement" on, it puts the map back at its own saved spot whenever the map refreshes. Quest Log Plus docks it back to the log right after, but you may see the map flicker. Turning off Leatrix Maps' map movement avoids that.
+If Leatrix Maps has "Enable movement" on, it puts the map back at its own saved spot whenever the map refreshes. Quest Log Plus docks it back to the log right after, but you may see the map flicker. Quest Log Plus lines up Leatrix Maps' visible border (title bar, map and coordinates bar) with the log, and dragging the map moves the log with it.

@@ -540,6 +540,8 @@ end
 
 local mapApplied, mapOrigScale = false, nil
 local mapHandle
+local mapBorder               -- a map skin's visible border (Leatrix Maps), if any
+local mapInsets               -- { left, top, height } of the visible map inside the map frame
 
 local function CanChangeMap()
 	return WorldMapFrame and (not InCombatLockdown() or not WorldMapFrame:IsProtected())
@@ -553,15 +555,53 @@ local function MapActive()
 	return frame and frame:IsShown() and db.showMap and WorldMapFrame and WorldMapFrame:IsShown() and not MapMaximized()
 end
 
--- the map scale that makes it exactly as tall as the log
-local function TargetMapScale()
-	local mapH = Clean(WorldMapFrame:GetHeight())
+-- Map skins such as Leatrix Maps draw their own border (title bar, map and
+-- coordinates footer) that is not the same size as the map frame: the frame
+-- reaches above the title bar and the footer hangs below it. Find that border:
+-- the smallest shown child with a backdrop that encloses the map canvas.
+local function FindMapBorder()
+	local sc = WorldMapFrame.ScrollContainer
+	if not sc then return end
+	local sL, sR, sT, sB = Clean(sc:GetLeft()), Clean(sc:GetRight()), Clean(sc:GetTop()), Clean(sc:GetBottom())
+	if not (sL and sR and sT and sB) then return end
+	local best, bestArea
+	for _, child in ipairs({ WorldMapFrame:GetChildren() }) do
+		if child ~= mapHandle and child:IsShown() and child.GetBackdrop and SafeCall(child.GetBackdrop, child) then
+			local l, r, t, b = Clean(child:GetLeft()), Clean(child:GetRight()), Clean(child:GetTop()), Clean(child:GetBottom())
+			if l and r and t and b and l <= sL + 1 and r >= sR - 1 and t >= sT - 1 and b <= sB + 1 then
+				local area = (r - l) * (t - b)
+				if not bestArea or area < bestArea then best, bestArea = child, area end
+			end
+		end
+	end
+	return best
+end
+
+-- where the visible map sits inside the map frame, in map frame units
+-- (these don't change with the map's scale)
+local function MeasureMapInsets()
+	local mL, mT, mB = Clean(WorldMapFrame:GetLeft()), Clean(WorldMapFrame:GetTop()), Clean(WorldMapFrame:GetBottom())
+	if not (mL and mT and mB) then return mapInsets end
+	mapBorder = FindMapBorder()
+	if mapBorder then
+		local bL, bT, bB = Clean(mapBorder:GetLeft()), Clean(mapBorder:GetTop()), Clean(mapBorder:GetBottom())
+		if bL and bT and bB and bT > bB then
+			mapInsets = { left = bL - mL, top = mT - bT, height = bT - bB }
+			return mapInsets
+		end
+	end
+	mapInsets = { left = 0, top = 0, height = mT - mB }
+	return mapInsets
+end
+
+-- the map scale that makes the visible map exactly as tall as the log
+local function TargetMapScale(insets)
 	local mapScale = Clean(WorldMapFrame:GetScale())
 	local mapEff = Clean(WorldMapFrame:GetEffectiveScale())
 	local logEff = Clean(frame:GetEffectiveScale())
-	if not mapH or not mapScale or not mapEff or not logEff or mapH <= 0 or mapScale <= 0 then return end
+	if not insets or not mapScale or not mapEff or not logEff or insets.height <= 0 or mapScale <= 0 then return end
 	local parentEff = mapEff / mapScale
-	local scale = frame:GetHeight() * logEff / (mapH * parentEff)
+	local scale = frame:GetHeight() * logEff / (insets.height * parentEff)
 	return math.min(2, math.max(0.2, scale))
 end
 
@@ -592,18 +632,23 @@ function ApplyMapLayout()
 		mapApplied = true
 	end
 
-	local scale = TargetMapScale()
+	local insets = MeasureMapInsets()
+	local scale = TargetMapScale(insets)
 	if scale and math.abs(WorldMapFrame:GetScale() - scale) > 0.001 then
 		WorldMapFrame:SetScale(scale)
 	end
 
+	-- put the visible map's top-left corner at the target
 	local x, y = MapTarget()
-	if x and y then
+	if x and y and insets then
 		local k = UIParent:GetEffectiveScale() / WorldMapFrame:GetEffectiveScale()
 		WorldMapFrame:ClearAllPoints()
-		WorldMapFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x * k, y * k)
+		WorldMapFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x * k - insets.left, y * k + insets.top)
 	end
-	if mapHandle then mapHandle:Show() end
+
+	-- our drag handle is only needed on the default map; with a skin's border
+	-- (Leatrix Maps) the map's own dragging is used instead (see HookMap)
+	if mapHandle then mapHandle:SetShown(not mapBorder) end
 end
 
 -- run after the game (and Leatrix Maps) have finished placing the map
@@ -627,8 +672,13 @@ local function WatchMap(elapsed)
 	if not MapActive() or not CanChangeMap() then return end
 	local x, y = MapTarget()
 	local mx, my = TopLeftInUI(WorldMapFrame)
-	if not x or not mx then return end
-	local scale = TargetMapScale()
+	if not x or not mx or not mapInsets then
+		ApplyMapLayout()
+		return
+	end
+	local k = WorldMapFrame:GetEffectiveScale() / UIParent:GetEffectiveScale()
+	mx, my = mx + mapInsets.left * k, my - mapInsets.top * k -- visible corner
+	local scale = TargetMapScale(mapInsets)
 	if math.abs(mx - x) > 1 or math.abs(my - y) > 1
 		or (scale and math.abs(WorldMapFrame:GetScale() - scale) > 0.005) then
 		ApplyMapLayout()
@@ -712,6 +762,15 @@ local function HookMap()
 	end)
 	mapHandle:SetScript("OnMouseUp", function() StopLogMove() end)
 	mapHandle:Hide()
+
+	-- with a map addon that makes the map draggable (Leatrix Maps "Enable
+	-- movement"), dragging the map moves the log too; the map follows the log
+	WorldMapFrame:HookScript("OnDragStart", function()
+		if frame and MapActive() then StartLogMove() end
+	end)
+	WorldMapFrame:HookScript("OnDragStop", function()
+		if logMoving then StopLogMove() end
+	end)
 end
 
 ---------------------------------------------------------------------------
@@ -869,6 +928,9 @@ local function OnRowEnter(self)
 	local q = self.data
 	GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 	GameTooltip:SetText(q.title or "?", 1, 1, 1)
+	if IsTracked(q.questID) then
+		GameTooltip:AddLine("Tracked", 0.3, 0.8, 1)
+	end
 	if q.state == "complete" then
 		GameTooltip:AddLine("Ready to turn in", 0.35, 1, 0.35)
 	elseif q.state == "failed" then
@@ -964,6 +1026,13 @@ local function CreateRow()
 	r.accent:SetPoint("TOPLEFT")
 	r.accent:SetPoint("BOTTOMLEFT")
 	r.accent:SetWidth(3)
+	-- tracked quests: thin bar on the right edge (drawn over the row, takes no space)
+	r.track = r:CreateTexture(nil, "BORDER")
+	r.track:SetPoint("TOPRIGHT")
+	r.track:SetPoint("BOTTOMRIGHT")
+	r.track:SetWidth(3)
+	r.track:SetColorTexture(0.3, 0.8, 1, 0.9)
+	r.track:Hide()
 	local hl = r:CreateTexture(nil, "HIGHLIGHT")
 	hl:SetAllPoints()
 	hl:SetColorTexture(1, 1, 1, 0.08)
@@ -1037,7 +1106,7 @@ local function SetupHeader(r, g, width)
 	r.kind, r.data = "header", g
 	r:SetWidth(width)
 	r:SetHeight(22)
-	r.box:Hide(); r.boxCheck:Hide(); r.icon:Hide(); r.sub:Hide(); r.accent:Hide(); r.cur:Hide()
+	r.box:Hide(); r.boxCheck:Hide(); r.icon:Hide(); r.sub:Hide(); r.accent:Hide(); r.cur:Hide(); r.track:Hide()
 	HideRowRewards(r)
 	r.bg:SetColorTexture(0, 0, 0, 0.35)
 
@@ -1217,6 +1286,8 @@ local function SetupQuest(r, q, width)
 	else
 		r.title:SetTextColor(QuestColor(q))
 	end
+
+	r.track:SetShown(IsTracked(q.questID))
 
 	local isCurrent = popout and popout:IsShown() and detailQuestID == q.questID
 	r.cur:SetShown(isCurrent and not isSel and true or false)
