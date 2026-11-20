@@ -39,6 +39,8 @@ local MIN_W, MIN_H, MAX_W, MAX_H = 320, 380, 900, 1400
 local ICON = 20                 -- reward icon size in the list
 local READY_ICON = "Interface\\RaidFrame\\ReadyCheck-Ready"
 local FAILED_ICON = "Interface\\RaidFrame\\ReadyCheck-NotReady"
+local TURNIN_ATLAS = "QuestTurnin"
+local TURNIN_FILE = "Interface\\GossipFrame\\ActiveQuestIcon"
 local PLUS_TEX = "Interface\\Buttons\\UI-PlusButton-Up"
 local MINUS_TEX = "Interface\\Buttons\\UI-MinusButton-Up"
 local BOX_TEX = "Interface\\Buttons\\UI-CheckBox-Up"
@@ -161,6 +163,27 @@ local function QualityColor(quality)
 	local c = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
 	if c then return c.r, c.g, c.b end
 	return 1, 1, 1
+end
+
+local function HasAtlas(name)
+	return C_Texture and C_Texture.GetAtlasInfo and SafeCall(C_Texture.GetAtlasInfo, name) ~= nil
+end
+
+-- the yellow turn-in question mark
+local function SetTurnInIcon(tex)
+	if HasAtlas(TURNIN_ATLAS) then
+		tex:SetAtlas(TURNIN_ATLAS)
+	else
+		tex:SetTexture(TURNIN_FILE)
+		tex:SetTexCoord(0, 1, 0, 1)
+	end
+end
+
+local function TurnInIconStr(size)
+	if HasAtlas(TURNIN_ATLAS) then
+		return ("|A:%s:%d:%d|a"):format(TURNIN_ATLAS, size, size)
+	end
+	return IconStr(TURNIN_FILE, size)
 end
 
 local function HideTooltip()
@@ -1172,7 +1195,12 @@ local function SetupQuest(r, q, width)
 
 	if q.state == "complete" or q.state == "failed" then
 		r.icon:Show()
-		r.icon:SetTexture(q.state == "complete" and READY_ICON or FAILED_ICON)
+		if q.state == "complete" then
+			SetTurnInIcon(r.icon)
+		else
+			r.icon:SetTexture(FAILED_ICON)
+			r.icon:SetTexCoord(0, 1, 0, 1)
+		end
 		r.icon:ClearAllPoints()
 		r.icon:SetPoint("TOPLEFT", r, "TOPLEFT", x, -2)
 		x = x + 18
@@ -1267,11 +1295,11 @@ local function SetupQuest(r, q, width)
 		end
 		r.accent:Show()
 	elseif q.state == "complete" then
-		r.bg:SetColorTexture(0.10, 0.50, 0.10, 0.35)
+		r.bg:SetColorTexture(0, 0, 0, 0)
 		r.accent:SetColorTexture(0.35, 1, 0.35, 1)
 		r.accent:Show()
 	elseif q.state == "failed" then
-		r.bg:SetColorTexture(0.5, 0.08, 0.08, 0.30)
+		r.bg:SetColorTexture(0, 0, 0, 0)
 		r.accent:SetColorTexture(1, 0.25, 0.25, 1)
 		r.accent:Show()
 	else
@@ -1461,7 +1489,7 @@ local function RenderDetail(q)
 		detail.statusBg:SetColorTexture(0.10, 0.50, 0.10, 0.35)
 		detail.statusBg:Show()
 		y = y + 4
-		Text(detail.status, IconStr(READY_ICON, 18) .. " " .. GREEN .. "READY TO TURN IN|r" .. extra, 14)
+		Text(detail.status, TurnInIconStr(18) .. " " .. GREEN .. "READY TO TURN IN|r" .. extra, 14)
 	elseif q.state == "failed" then
 		detail.statusBg:SetColorTexture(0.5, 0.08, 0.08, 0.30)
 		detail.statusBg:Show()
