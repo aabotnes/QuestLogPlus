@@ -1466,6 +1466,8 @@ local function CreateRow()
 
 	r.xp = r:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
 	r.xp:SetJustifyH("RIGHT")
+	r.money = r:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall") -- gold reward, after the reward icons
+	r.money:Hide()
 	r.timer = r:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall") -- timed quests: time left
 	r.timer:SetJustifyH("RIGHT")
 	r.timer:SetPoint("TOPRIGHT", r, "TOPRIGHT", -6, -19)
@@ -1500,7 +1502,7 @@ local function SetupHeader(r, g, width)
 	r:SetWidth(width)
 	r:SetHeight(22)
 	r.box:Hide(); r.boxCheck:Hide(); r.icon:Hide(); r.sub:Hide(); r.accent:Hide(); r.cur:Hide(); r.track:Hide()
-	r.timer:Hide(); r.timerEnd = nil
+	r.timer:Hide(); r.timerEnd = nil; r.money:Hide()
 	HideRowRewards(r)
 	r.bg:SetColorTexture(0, 0, 0, 0.35)
 
@@ -1644,11 +1646,15 @@ local function SetupQuest(r, q, width)
 
 	-- optional reward icons
 	local iconN, labelN = 0, 0
+	local moneyShown = false
+	r.money:Hide()
 	if db.listRewards then
 		local rw = GetRewards(q.questID)
+		local money = Clean(SafeCall(GetQuestLogRewardMoney, q.questID))
+		if type(money) ~= "number" or money <= 0 then money = nil end
 		local perRow = math.max(1, math.floor((innerW + 3) / (K.ICON + 3)))
-		local function Block(label, list)
-			if #list == 0 then return end
+		local function Block(label, list, withMoney)
+			if #list == 0 and not withMoney then return end
 			labelN = labelN + 1
 			local fs = GetRowLabel(r, labelN)
 			fs:ClearAllPoints()
@@ -1667,14 +1673,34 @@ local function SetupQuest(r, q, width)
 				b:ClearAllPoints()
 				b:SetPoint("TOPLEFT", r, "TOPLEFT", innerX + col * (K.ICON + 3), -(y + ro * (K.ICON + 3)))
 			end
-			y = y + math.ceil(#list / perRow) * (K.ICON + 3) + 1
+			local iconRows = math.ceil(#list / perRow)
+			-- gold goes right after the item icons (on a new line if it doesn't fit)
+			if withMoney then
+				r.money:SetText(GetCoinTextureString and GetCoinTextureString(withMoney, 12) or tostring(withMoney))
+				local mx, row = innerX, math.max(iconRows - 1, 0)
+				if #list > 0 then
+					local lastCol = (#list - 1) % perRow
+					mx = innerX + (lastCol + 1) * (K.ICON + 3) + 3
+					if mx + r.money:GetStringWidth() > innerX + innerW then
+						mx, row = innerX, iconRows
+						iconRows = iconRows + 1
+					end
+				else
+					iconRows = 1
+				end
+				r.money:ClearAllPoints()
+				r.money:SetPoint("TOPLEFT", r, "TOPLEFT", mx, -(y + row * (K.ICON + 3) + 4))
+				r.money:Show()
+				moneyShown = true
+			end
+			y = y + iconRows * (K.ICON + 3) + 1
 		end
 		Block("Choose one:", rw.choices)
-		Block(#rw.choices > 0 and "You will also receive:" or "You will receive:", rw.items)
+		Block((#rw.choices > 0) and "You will also receive:" or "You will receive:", rw.items, money)
 	end
 	HideRowRewards(r, iconN + 1, labelN + 1)
 	-- only as tall as what is shown: a single line when there is nothing under the title
-	local height = (#lines > 0 or iconN > 0) and (y + 5) or 20
+	local height = (#lines > 0 or iconN > 0 or moneyShown) and (y + 5) or 20
 	if timerBelow then height = math.max(height, 34) end
 	r:SetHeight(height)
 
@@ -2732,7 +2758,9 @@ for _, o in ipairs(OPTIONS) do OPTION_LABEL[o[1]] = o[2] end
 for _, fl in ipairs(FILTERS) do OPTION_LABEL[fl.key] = "Filter: " .. fl.label end
 
 local function SyncChecks()
-	for _, cb in ipairs(allChecks) do cb:SetChecked(db[cb.key] and true or false) end
+	for _, cb in ipairs(allChecks) do
+		if cb.getter then cb:SetChecked(cb.getter()) else cb:SetChecked(db[cb.key] and true or false) end
+	end
 	for _, sl in ipairs(allSliders) do sl.Sync() end
 end
 
@@ -2777,6 +2805,27 @@ local function ResetGeometry()
 end
 
 local function BuildOptions(parent, x, y)
+	-- check / uncheck all (the quest log key setting is left alone, so L keeps working)
+	local function ForAll(fn)
+		for _, o in ipairs(OPTIONS) do
+			if o[1] ~= "takeOverKey" then fn(o[1]) end
+		end
+	end
+	local allBox = MakeCheck(parent, "Check / uncheck all",
+		"Turns every setting below on or off at once. \"Quest log key opens Quest Log Plus\" is left as it is.", "_all")
+	allBox.getter = function()
+		local on = true
+		ForAll(function(key) if not db[key] then on = false end end)
+		return on
+	end
+	allBox:SetScript("OnClick", function(self)
+		local on = self:GetChecked() and true or false
+		ForAll(function(key) if (db[key] and true or false) ~= on then SetOption(key, on) end end)
+		SyncChecks()
+	end)
+	allBox:SetChecked(allBox.getter())
+	allBox:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+	y = y - 30
 	for _, o in ipairs(OPTIONS) do
 		local cb = MakeCheck(parent, o[2], o[3], o[1])
 		cb:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)

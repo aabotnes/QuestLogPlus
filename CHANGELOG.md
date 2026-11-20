@@ -1,5 +1,10 @@
 # Quest Log Plus
 
+## v1.4.4
+
+- **Gold rewards in the list:** the reward icon row now shows the gold a quest gives, with coin icons, after the item icons. Quests that only give gold show it too.
+- **Check / uncheck all** at the top of the settings turns every setting on or off at once. *Quest log key opens Quest Log Plus* is left as it is, so L keeps working.
+
 ## v1.4.3
 
 - **Fixed:** after a flight path the quest log key could open the default quest log again. Quest Log Plus now checks that the key really opens it (on binding updates, after landing, on loading screens, and every few seconds) and binds it again if the game reset it. The key binding is now a priority binding.
