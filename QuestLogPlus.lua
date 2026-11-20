@@ -769,6 +769,28 @@ local function PlaceMapOffButton()
 	mapOffButton:Show()
 end
 
+-- Close the map's own quest list (its side panel). Uses the map's close
+-- action if the client has one, else clicks the panel's own close button.
+local function HideDefaultQuestPanel()
+	if not db.hideDefaultMapPanel or not WorldMapFrame then return end
+	if not (QuestMapFrame and QuestMapFrame:IsShown()) then return end
+	if WorldMapFrame.HandleUserActionCloseSidePanel then
+		SafeCall(WorldMapFrame.HandleUserActionCloseSidePanel, WorldMapFrame)
+	end
+	if QuestMapFrame:IsShown() then
+		local toggle = WorldMapFrame.SidePanelToggle
+		if not toggle then
+			for _, ov in ipairs(WorldMapFrame.overlayFrames or {}) do
+				if ov.OpenButton and ov.CloseButton then toggle = ov break end
+			end
+		end
+		local close = toggle and toggle.CloseButton
+		if close and close:IsShown() and not close:IsProtected() then
+			SafeCall(close.Click, close)
+		end
+	end
+end
+
 -- switch a maximized map to the windowed map (the maximize button and the map
 -- itself both know how; the button also updates its own look)
 local function MinimizeMap()
@@ -784,9 +806,11 @@ function ApplyMapLayout()
 	-- turns maximized a moment after it is shown. A full-size map can't sit
 	-- next to the log, so right after this addon opened it, use the windowed map.
 	-- (Maximizing it yourself later is left alone.)
-	if mapOpenedAt and GetTime() - mapOpenedAt < 2 and MapMaximized()
+	if mapOpenedAt and GetTime() - mapOpenedAt < 2
 		and frame and frame:IsShown() and db.showMap and WorldMapFrame:IsShown() then
-		MinimizeMap()
+		if MapMaximized() then MinimizeMap() end
+		-- the windowed map can bring its quest list back with it
+		HideDefaultQuestPanel()
 	end
 	if not MapActive() then
 		RestoreMapDefaults()
@@ -842,7 +866,7 @@ local function WatchMap(elapsed)
 	mapWatchElapsed = mapWatchElapsed + (elapsed or 0)
 	if mapWatchElapsed < 0.2 then return end
 	mapWatchElapsed = 0
-	if mapOpenedAt and GetTime() - mapOpenedAt < 2 and MapMaximized() then
+	if mapOpenedAt and GetTime() - mapOpenedAt < 2 then
 		ApplyMapLayout()
 		return
 	end
@@ -872,13 +896,6 @@ local function GetMapForQuest(questID)
 		if type(id) == "number" and id > 0 then return id end
 	end
 	return C_Map and SafeCall(C_Map.GetBestMapForUnit, "player")
-end
-
-local function HideDefaultQuestPanel()
-	if not db.hideDefaultMapPanel or not WorldMapFrame then return end
-	if QuestMapFrame and QuestMapFrame:IsShown() and WorldMapFrame.HandleUserActionCloseSidePanel then
-		SafeCall(WorldMapFrame.HandleUserActionCloseSidePanel, WorldMapFrame)
-	end
 end
 
 local function ShowMap()
@@ -921,6 +938,7 @@ local function HookMap()
 	mapHooked = true
 
 	WorldMapFrame:HookScript("OnShow", ScheduleMapLayout)
+	if QuestMapFrame then QuestMapFrame:HookScript("OnShow", ScheduleMapLayout) end
 	-- The game's map fader sets the map's opacity while you move (back to full,
 	-- even with map fade turned off). Keep the opacity setting as the most opaque
 	-- the attached map gets; a fade below it is left alone.
