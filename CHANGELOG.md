@@ -1,5 +1,11 @@
 # Quest Log Plus
 
+## v1.4.1
+
+- **Timed quests** show their time left under the +XP text, counting down, and red in the last minute. The tooltip shows it too.
+- **M opens the map attached to the log** while the log is open, even with Show Map off. Hide Map (or closing the map) puts it back to normal; the Show Map setting stays as it was.
+- **Failed quests** are the red mirror of completed ones: red bar on the left, red ✕, *Failed* with a hint to abandon and retake it, and they sort to the bottom of their zone.
+
 ## v1.4.0
 
 First public release.

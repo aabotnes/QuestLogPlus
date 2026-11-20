@@ -334,6 +334,49 @@ local function EnsureExpanded()
 	end
 end
 
+-- Timed quests. The game reports seconds left when asked, so each row keeps
+-- the end time and the shown countdown ticks on its own.
+local Timers = { rows = {}, elapsed = 0 }
+
+-- questID -> seconds left, for every timed quest in the log
+function Timers.Read()
+	local out = {}
+	if C_QuestLog.GetQuestTimers then
+		local list = SafeCall(C_QuestLog.GetQuestTimers)
+		if type(list) == "table" then
+			for _, t in ipairs(list) do
+				local id, secs = Clean(t.questID), Clean(t.questTimer)
+				if type(id) == "number" and type(secs) == "number" then out[id] = secs end
+			end
+		end
+	end
+	return out
+end
+
+function Timers.Format(secs)
+	secs = math.max(0, math.floor(secs + 0.5))
+	if secs >= 3600 then
+		return ("%dh %02dm"):format(math.floor(secs / 3600), math.floor(secs % 3600 / 60))
+	end
+	return ("%d:%02d"):format(math.floor(secs / 60), secs % 60)
+end
+
+function Timers.SetText(fs, timerEnd)
+	local left = timerEnd - GetTime()
+	fs:SetText("|TInterface\\Icons\\INV_Misc_PocketWatch_01:12:12|t " .. Timers.Format(left))
+	if left < 60 then fs:SetTextColor(1, 0.3, 0.3) else fs:SetTextColor(1, 0.82, 0) end
+end
+
+-- called from the log's OnUpdate: refresh the shown countdowns twice a second
+function Timers.Tick(elapsed)
+	Timers.elapsed = Timers.elapsed + (elapsed or 0)
+	if Timers.elapsed < 0.5 then return end
+	Timers.elapsed = 0
+	for _, r in ipairs(Timers.rows) do
+		if r.timerEnd and r:IsShown() then Timers.SetText(r.timer, r.timerEnd) end
+	end
+end
+
 local function ActiveFilterCount()
 	local n = 0
 	for _, fl in ipairs(FILTERS) do
@@ -376,6 +419,7 @@ local function BuildQuestList()
 	local result, current = {}, nil
 	wipe(questsByID)
 	totalQuests, shownQuests = 0, 0
+	local timeLeft = Timers.Read()
 	local n = C_QuestLog.GetNumQuestLogEntries() or 0
 	for i = 1, n do
 		local info = C_QuestLog.GetInfo(i)
@@ -399,6 +443,7 @@ local function BuildQuestList()
 					end
 					q.order = #current.quests
 					q.xp = GetQuestXP(q.questID)
+					if timeLeft[q.questID] then q.timerEnd = GetTime() + timeLeft[q.questID] end
 					current.quests[#current.quests + 1] = q
 					questsByID[q.questID] = q
 					shownQuests = shownQuests + 1
@@ -412,9 +457,11 @@ local function BuildQuestList()
 	for _, g in ipairs(result) do
 		if #g.quests > 0 then
 			if db.completedFirst then
+				-- ready to turn in at the top, failed at the bottom
+				local rank = { complete = 1, active = 2, failed = 3 }
 				table.sort(g.quests, function(a, b)
-					local ac, bc = a.state == "complete", b.state == "complete"
-					if ac ~= bc then return ac end
+					local ar, br = rank[a.state] or 2, rank[b.state] or 2
+					if ar ~= br then return ar < br end
 					return a.order < b.order
 				end)
 			end
@@ -629,6 +676,7 @@ end
 
 local mapApplied, mapOrigScale = false, nil
 local mapOpenedAt              -- when this addon last opened the map (it may still turn maximized)
+local mapTempAttach = false    -- map opened another way (M) while the log is open: attached until closed
 local mapHandle
 local mapBorder               -- a map skin's visible border (Leatrix Maps), if any
 local mapInsets               -- { left, top, height } of the visible map inside the map frame
@@ -642,7 +690,8 @@ local function MapMaximized()
 end
 
 local function MapActive()
-	return frame and frame:IsShown() and db.showMap and WorldMapFrame and WorldMapFrame:IsShown() and not MapMaximized()
+	return frame and frame:IsShown() and (db.showMap or mapTempAttach) and WorldMapFrame and WorldMapFrame:IsShown()
+		and not MapMaximized()
 end
 
 -- Map skins such as Leatrix Maps draw their own border (title bar, map and
@@ -807,7 +856,7 @@ function ApplyMapLayout()
 	-- next to the log, so right after this addon opened it, use the windowed map.
 	-- (Maximizing it yourself later is left alone.)
 	if mapOpenedAt and GetTime() - mapOpenedAt < 2
-		and frame and frame:IsShown() and db.showMap and WorldMapFrame:IsShown() then
+		and frame and frame:IsShown() and (db.showMap or mapTempAttach) and WorldMapFrame:IsShown() then
 		if MapMaximized() then MinimizeMap() end
 		-- the windowed map can bring its quest list back with it
 		HideDefaultQuestPanel()
@@ -925,10 +974,16 @@ local function HideMap()
 end
 
 local function UpdateMapButton()
-	if mapButton then mapButton:SetText(db.showMap and "Hide Map" or "Show Map") end
+	if mapButton then mapButton:SetText((db.showMap or (mapTempAttach and WorldMapFrame:IsShown())) and "Hide Map" or "Show Map") end
 end
 
 local function ToggleMapSetting()
+	-- a map opened with M is only closed; the Show Map setting stays as it is
+	if mapTempAttach and not db.showMap then
+		HideMap()
+		UpdateMapButton()
+		return
+	end
 	SetOption("showMap", not db.showMap)
 end
 
@@ -937,7 +992,15 @@ local function HookMap()
 	if mapHooked or not WorldMapFrame then return end
 	mapHooked = true
 
-	WorldMapFrame:HookScript("OnShow", ScheduleMapLayout)
+	WorldMapFrame:HookScript("OnShow", function()
+		-- opened some other way (M) while the log is open: attach it like Show Map does
+		if frame and frame:IsShown() and not db.showMap then
+			mapTempAttach = true
+			mapOpenedAt = GetTime()
+		end
+		UpdateMapButton()
+		ScheduleMapLayout()
+	end)
 	if QuestMapFrame then QuestMapFrame:HookScript("OnShow", ScheduleMapLayout) end
 	-- The game's map fader sets the map's opacity while you move (back to full,
 	-- even with map fade turned off). Keep the opacity setting as the most opaque
@@ -954,6 +1017,8 @@ local function HookMap()
 	WorldMapFrame:HookScript("OnHide", function()
 		if logMoving and frame then StopLogMove() end
 		RestoreMapDefaults()
+		mapTempAttach = false
+		UpdateMapButton()
 	end)
 	-- the game (and Leatrix Maps) re-place the map on these; put it back after them
 	if WorldMapFrame.SynchronizeDisplayState then
@@ -1224,6 +1289,9 @@ local function OnRowEnter(self)
 	if IsTracked(q.questID) then
 		GameTooltip:AddLine("Tracked", 0.3, 0.8, 1)
 	end
+	if q.timerEnd then
+		GameTooltip:AddLine("Time left: " .. Timers.Format(q.timerEnd - GetTime()), 1, 0.82, 0)
+	end
 	if q.state == "complete" then
 		GameTooltip:AddLine("Ready to turn in", 0.35, 1, 0.35)
 		local comp = Clean(SafeCall(GetQuestLogCompletionText, q.index))
@@ -1385,6 +1453,10 @@ local function CreateRow()
 
 	r.xp = r:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
 	r.xp:SetJustifyH("RIGHT")
+	r.timer = r:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall") -- timed quests: time left
+	r.timer:SetJustifyH("RIGHT")
+	r.timer:SetPoint("TOPRIGHT", r, "TOPRIGHT", -6, -19)
+	r.timer:Hide()
 	r.title = r:CreateFontString(nil, "ARTWORK", "GameFontNormal")
 	r.title:SetJustifyH("LEFT")
 	r.title:SetWordWrap(false)
@@ -1415,6 +1487,7 @@ local function SetupHeader(r, g, width)
 	r:SetWidth(width)
 	r:SetHeight(22)
 	r.box:Hide(); r.boxCheck:Hide(); r.icon:Hide(); r.sub:Hide(); r.accent:Hide(); r.cur:Hide(); r.track:Hide()
+	r.timer:Hide(); r.timerEnd = nil
 	HideRowRewards(r)
 	r.bg:SetColorTexture(0, 0, 0, 0.35)
 
@@ -1512,6 +1585,7 @@ local function SetupQuest(r, q, width)
 		end
 	elseif q.state == "failed" then
 		lines[#lines + 1] = "|cffff5555Failed|r"
+		lines[#lines + 1] = K.GREY .. "Abandon it and pick it up again to retry.|r"
 	elseif db.listObjectives then
 		for _, o in ipairs(GetObjectives(q.questID)) do
 			local text = Clean(o.text)
@@ -1523,8 +1597,17 @@ local function SetupQuest(r, q, width)
 
 	local innerX = x + 6
 	local innerW = width - innerX - 8
+	if q.timerEnd then
+		r.timerEnd = q.timerEnd
+		Timers.SetText(r.timer, q.timerEnd)
+		r.timer:Show()
+		Timers.rows[#Timers.rows + 1] = r
+	else
+		r.timerEnd = nil
+		r.timer:Hide()
+	end
 	r.sub:ClearAllPoints()
-	r.sub:SetWidth(innerW)
+	r.sub:SetWidth(q.timerEnd and (innerW - 58) or innerW)
 	r.sub:SetPoint("TOPLEFT", r, "TOPLEFT", innerX, -21)
 	local y = 21
 	if #lines > 0 then
@@ -1567,7 +1650,7 @@ local function SetupQuest(r, q, width)
 		Block(#rw.choices > 0 and "You will also receive:" or "You will receive:", rw.items)
 	end
 	HideRowRewards(r, iconN + 1, labelN + 1)
-	r:SetHeight(y + 5)
+	r:SetHeight(math.max(y + 5, q.timerEnd and 36 or 0))
 
 	-- colors
 	if isSel then
@@ -1613,6 +1696,7 @@ local function SetupQuest(r, q, width)
 end
 
 local function RenderList()
+	wipe(Timers.rows)
 	local width = math.max(200, listScroll:GetWidth() or 300)
 	listContent:SetWidth(width)
 	local y, n = 0, 0
@@ -2410,6 +2494,7 @@ local function CreateUI()
 	frame:SetScript("OnDragStop", StopLogMove)
 	-- keep the attached map next to the log: live while moving/resizing, else a light check
 	frame:SetScript("OnUpdate", function(_, elapsed)
+		Timers.Tick(elapsed)
 		if logMoving then
 			if MapActive() then ApplyMapLayout() end
 		else
