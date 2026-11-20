@@ -179,6 +179,20 @@ local function IconStr(tex, size)
 	return ("|T%s:%d:%d|t"):format(tostring(tex), size, size)
 end
 
+-- money as "1[gold] 25[silver] 3[copper]" with the game's coin icons (zero parts left out)
+local function CoinStr(copper, size)
+	copper = math.floor(copper or 0)
+	local g, s, c = math.floor(copper / 10000), math.floor(copper / 100) % 100, copper % 100
+	local parts = {}
+	local function Part(n, icon)
+		parts[#parts + 1] = ("|cffffffff%s|r|TInterface\\MoneyFrame\\%s:%d:%d:2:0|t"):format(FormatNumber(n), icon, size, size)
+	end
+	if g > 0 then Part(g, "UI-GoldIcon") end
+	if s > 0 then Part(s, "UI-SilverIcon") end
+	if c > 0 or #parts == 0 then Part(c, "UI-CopperIcon") end
+	return table.concat(parts, " ")
+end
+
 local function LevelPercent(xp)
 	local max = Clean(UnitXPMax and UnitXPMax("player"))
 	if type(max) ~= "number" or max <= 0 then return nil end
@@ -1676,7 +1690,7 @@ local function SetupQuest(r, q, width)
 			local iconRows = math.ceil(#list / perRow)
 			-- gold goes right after the item icons (on a new line if it doesn't fit)
 			if withMoney then
-				r.money:SetText(GetCoinTextureString and GetCoinTextureString(withMoney, 12) or tostring(withMoney))
+				r.money:SetText(CoinStr(withMoney, 12))
 				local mx, row = innerX, math.max(iconRows - 1, 0)
 				if #list > 0 then
 					local lastCol = (#list - 1) % perRow
@@ -1950,7 +1964,7 @@ local function RenderDetail(q)
 	local money = Clean(SafeCall(GetQuestLogRewardMoney, q.questID))
 	if type(money) ~= "number" then money = 0 end
 	local extras = {}
-	if money > 0 and GetCoinTextureString then extras[#extras + 1] = GetCoinTextureString(money) end
+	if money > 0 then extras[#extras + 1] = CoinStr(money, 14) end
 	if q.xp > 0 then
 		local pct = LevelPercent(q.xp)
 		extras[#extras + 1] = ("%s: %s+%s|r%s"):format(EXPERIENCE_COLON and EXPERIENCE_COLON:gsub(":%s*$", "") or "Experience",

@@ -1,5 +1,9 @@
 # Quest Log Plus
 
+## v1.4.5
+
+- **Fixed:** gold rewards showed as a plain copper number (like "4000"). They now show as gold, silver and copper amounts with the coin icons ("40" with a silver coin). The details panel shows gold again too; it was missing there.
+
 ## v1.4.4
 
 - **Gold rewards in the list:** the reward icon row now shows the gold a quest gives, with coin icons, after the item icons. Quests that only give gold show it too.
