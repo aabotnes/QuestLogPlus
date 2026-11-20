@@ -1,5 +1,12 @@
 # Quest Log Plus
 
+## v1.4.2
+
+- **Compact list:** rows are only as tall as what they show. With XP, status text, objective progress and reward icons off, every quest is a single line.
+- **New setting: Show XP rewards** (on by default). With it off, a timed quest's countdown takes the XP spot.
+- **New setting: Status text** ("Ready to turn in" / "Failed", on by default). The icons and coloured bars stay either way.
+- **New setting: Select the quest on the map** (on by default). With the map shown, picking a quest in the log selects it on the map, the quest the map highlights and the quest arrow points to.
+
 ## v1.4.1
 
 - **Timed quests** show their time left under the +XP text, counting down, and red in the last minute. The tooltip shows it too.

@@ -25,6 +25,9 @@ local DEFAULTS = {
 	takeOverKey = true,         -- the quest log key opens this log instead of the default one
 	hideDefaultMapPanel = true, -- close the map's own quest side panel when we open the map
 	listRewards = true,         -- small reward icons in the quest list
+	showXP = true,              -- "+1,250 xp" on each quest in the list
+	readyText = true,           -- "Ready to turn in" / "Failed" text under finished and failed quests
+	selectOnMap = true,         -- picking a quest while the map is shown selects (super-tracks) it on the map
 	tooltipObjectives = true,   -- quest objective text in the quest tooltip
 	listObjectives = true,      -- objective progress lines under each quest in the list
 	filterItems = false,        -- filter: only quests you hold quest items for
@@ -947,6 +950,14 @@ local function GetMapForQuest(questID)
 	return C_Map and SafeCall(C_Map.GetBestMapForUnit, "player")
 end
 
+-- make the quest the map's selected (super-tracked) quest while the map is shown
+local function SelectQuestOnMap(questID)
+	if not questID or not db.selectOnMap or not MapActive() then return end
+	if C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then
+		SafeCall(C_SuperTrack.SetSuperTrackedQuestID, questID)
+	end
+end
+
 local function ShowMap()
 	if not WorldMapFrame then return end
 	mapOpenedAt = GetTime()
@@ -964,6 +975,7 @@ local function ShowMap()
 	-- the first time the map opens it isn't laid out until it has been drawn
 	C_Timer.After(0.05, ApplyMapLayout)
 	C_Timer.After(0.25, ApplyMapLayout)
+	if detailQuestID then C_Timer.After(0.3, function() SelectQuestOnMap(detailQuestID) end) end
 end
 
 local function HideMap()
@@ -1230,6 +1242,7 @@ local function OpenDetail(questID)
 	if MapActive() then
 		local mapID = GetMapForQuest(questID)
 		if mapID then SafeCall(WorldMapFrame.SetMapID, WorldMapFrame, mapID) end
+		SelectQuestOnMap(questID)
 	end
 end
 
@@ -1566,26 +1579,45 @@ local function SetupQuest(r, q, width)
 		r.icon:Hide()
 	end
 
+	local xpShown = db.showXP and q.xp > 0
 	r.xp:ClearAllPoints()
 	r.xp:SetPoint("TOPRIGHT", r, "TOPRIGHT", -6, -5)
-	r.xp:SetText(q.xp > 0 and (K.XP_COLOR .. "+" .. FormatNumber(q.xp) .. " xp|r") or "")
+	r.xp:SetText(xpShown and (K.XP_COLOR .. "+" .. FormatNumber(q.xp) .. " xp|r") or "")
+
+	-- timed quests: the countdown goes under the xp, or in its place when xp is hidden
+	local timerBelow = q.timerEnd and xpShown
+	if q.timerEnd then
+		r.timerEnd = q.timerEnd
+		r.timer:ClearAllPoints()
+		r.timer:SetPoint("TOPRIGHT", r, "TOPRIGHT", -6, timerBelow and -19 or -5)
+		Timers.SetText(r.timer, q.timerEnd)
+		r.timer:Show()
+		Timers.rows[#Timers.rows + 1] = r
+	else
+		r.timerEnd = nil
+		r.timer:Hide()
+	end
 
 	r.title:ClearAllPoints()
 	r.title:SetPoint("TOPLEFT", r, "TOPLEFT", x, -4)
-	r.title:SetPoint("TOPRIGHT", r.xp, "TOPLEFT", -6, 1)
+	r.title:SetPoint("TOPRIGHT", (q.timerEnd and not timerBelow) and r.timer or r.xp, "TOPLEFT", -6, 1)
 	r.title:SetText(QuestTitle(q))
 
 	-- sub lines: objectives, or the turn-in hint
 	local lines = {}
 	if q.state == "complete" then
-		lines[#lines + 1] = K.GREEN .. "Ready to turn in|r"
-		local comp = Clean(SafeCall(GetQuestLogCompletionText, q.index))
-		if type(comp) == "string" and comp ~= "" then
-			lines[#lines + 1] = K.GREY .. comp .. "|r"
+		if db.readyText then
+			lines[#lines + 1] = K.GREEN .. "Ready to turn in|r"
+			local comp = Clean(SafeCall(GetQuestLogCompletionText, q.index))
+			if type(comp) == "string" and comp ~= "" then
+				lines[#lines + 1] = K.GREY .. comp .. "|r"
+			end
 		end
 	elseif q.state == "failed" then
-		lines[#lines + 1] = "|cffff5555Failed|r"
-		lines[#lines + 1] = K.GREY .. "Abandon it and pick it up again to retry.|r"
+		if db.readyText then
+			lines[#lines + 1] = "|cffff5555Failed|r"
+			lines[#lines + 1] = K.GREY .. "Abandon it and pick it up again to retry.|r"
+		end
 	elseif db.listObjectives then
 		for _, o in ipairs(GetObjectives(q.questID)) do
 			local text = Clean(o.text)
@@ -1597,17 +1629,8 @@ local function SetupQuest(r, q, width)
 
 	local innerX = x + 6
 	local innerW = width - innerX - 8
-	if q.timerEnd then
-		r.timerEnd = q.timerEnd
-		Timers.SetText(r.timer, q.timerEnd)
-		r.timer:Show()
-		Timers.rows[#Timers.rows + 1] = r
-	else
-		r.timerEnd = nil
-		r.timer:Hide()
-	end
 	r.sub:ClearAllPoints()
-	r.sub:SetWidth(q.timerEnd and (innerW - 58) or innerW)
+	r.sub:SetWidth(timerBelow and (innerW - 58) or innerW)
 	r.sub:SetPoint("TOPLEFT", r, "TOPLEFT", innerX, -21)
 	local y = 21
 	if #lines > 0 then
@@ -1650,7 +1673,10 @@ local function SetupQuest(r, q, width)
 		Block(#rw.choices > 0 and "You will also receive:" or "You will receive:", rw.items)
 	end
 	HideRowRewards(r, iconN + 1, labelN + 1)
-	r:SetHeight(math.max(y + 5, q.timerEnd and 36 or 0))
+	-- only as tall as what is shown: a single line when there is nothing under the title
+	local height = (#lines > 0 or iconN > 0) and (y + 5) or 20
+	if timerBelow then height = math.max(height, 34) end
+	r:SetHeight(height)
 
 	-- colors
 	if isSel then
@@ -2670,6 +2696,11 @@ local OPTIONS = {
 		"Shows each quest's objective progress (like \"3/10 Kobold Vermin slain\") under it in the list." },
 	{ "tooltipObjectives", "Objective text in quest tooltips",
 		"Shows the quest's objective text (like \"Bring 8 Forked Mudrock Tongues to ...\") when you hover a quest." },
+	{ "showXP", "Show XP rewards", "Shows the experience each quest gives (like \"+1,250 xp\") on the right of each quest." },
+	{ "readyText", "Status text (\"Ready to turn in\" / \"Failed\")",
+		"Shows \"Ready to turn in\" and who to return to under finished quests, and \"Failed\" under failed ones. The icons and coloured bars stay either way." },
+	{ "selectOnMap", "Select the quest on the map",
+		"When the map is shown, picking a quest in the log selects it on the map: it becomes the quest the map highlights and the quest arrow points to." },
 	{ "showLevel", "Show quest levels", "Shows [12] in front of each quest name." },
 	{ "completedFirst", "Ready-to-turn-in quests at the top", "Completed quests sort to the top of their zone." },
 	{ "gameWindow", "Move aside for game windows",
