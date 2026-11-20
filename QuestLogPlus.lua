@@ -1206,8 +1206,20 @@ local function OnRowEnter(self)
 	end
 	if q.state == "complete" then
 		GameTooltip:AddLine("Ready to turn in", 0.35, 1, 0.35)
+		local comp = Clean(SafeCall(GetQuestLogCompletionText, q.index))
+		if type(comp) == "string" and comp ~= "" then
+			GameTooltip:AddLine(comp, 0.8, 0.8, 0.8, true)
+		end
 	elseif q.state == "failed" then
 		GameTooltip:AddLine("Failed", 1, 0.3, 0.3)
+	end
+	-- the quest's objective text ("Bring 8 Forked Mudrock Tongues to ..."), then progress
+	local _, objText = SafeCall(GetQuestLogQuestText, q.index)
+	objText = Clean(objText)
+	if type(objText) == "string" and objText ~= "" then
+		GameTooltip:AddLine(" ")
+		GameTooltip:AddLine(QUEST_OBJECTIVES or "Quest Objectives", 1, 0.82, 0)
+		GameTooltip:AddLine(objText, 1, 1, 1, true)
 	end
 	for _, o in ipairs(GetObjectives(q.questID)) do
 		local text = Clean(o.text)
