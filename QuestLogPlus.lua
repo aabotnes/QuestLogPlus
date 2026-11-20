@@ -626,6 +626,7 @@ end
 ---------------------------------------------------------------------------
 
 local mapApplied, mapOrigScale = false, nil
+local mapOpenedAt              -- when this addon last opened the map (it may still turn maximized)
 local mapHandle
 local mapBorder               -- a map skin's visible border (Leatrix Maps), if any
 local mapInsets               -- { left, top, height } of the visible map inside the map frame
@@ -766,8 +767,25 @@ local function PlaceMapOffButton()
 	mapOffButton:Show()
 end
 
+-- switch a maximized map to the windowed map (the maximize button and the map
+-- itself both know how; the button also updates its own look)
+local function MinimizeMap()
+	if InCombatLockdown() then return end
+	local mm = WorldMapFrame.BorderFrame and WorldMapFrame.BorderFrame.MaximizeMinimizeFrame
+	if mm and mm.Minimize then SafeCall(mm.Minimize, mm) end
+	if MapMaximized() and WorldMapFrame.Minimize then SafeCall(WorldMapFrame.Minimize, WorldMapFrame) end
+end
+
 function ApplyMapLayout()
 	if not WorldMapFrame then return end
+	-- The game can open the map maximized (full-size map setting), and it only
+	-- turns maximized a moment after it is shown. A full-size map can't sit
+	-- next to the log, so right after this addon opened it, use the windowed map.
+	-- (Maximizing it yourself later is left alone.)
+	if mapOpenedAt and GetTime() - mapOpenedAt < 2 and MapMaximized()
+		and frame and frame:IsShown() and db.showMap and WorldMapFrame:IsShown() then
+		MinimizeMap()
+	end
 	if not MapActive() then
 		RestoreMapDefaults()
 		return
@@ -796,7 +814,8 @@ function ApplyMapLayout()
 	-- (Leatrix Maps) the map's own dragging is used instead (see HookMap)
 	if mapHandle then mapHandle:SetShown(not mapBorder) end
 
-	if mapAlphaSet ~= db.mapAlpha then
+	local alpha = Clean(WorldMapFrame:GetAlpha())
+	if mapAlphaSet ~= db.mapAlpha or (alpha and alpha > db.mapAlpha + 0.001) then
 		WorldMapFrame:SetAlpha(db.mapAlpha)
 		mapAlphaSet = db.mapAlpha
 	end
@@ -821,18 +840,26 @@ local function WatchMap(elapsed)
 	mapWatchElapsed = mapWatchElapsed + (elapsed or 0)
 	if mapWatchElapsed < 0.2 then return end
 	mapWatchElapsed = 0
+	if mapOpenedAt and GetTime() - mapOpenedAt < 2 and MapMaximized() then
+		ApplyMapLayout()
+		return
+	end
 	if not MapActive() or not CanChangeMap() then return end
+	-- the map's size and border can still be settling (first open after a reload)
+	local insets = MeasureMapInsets()
 	local x, y = MapTarget()
 	local mx, my = TopLeftInUI(WorldMapFrame)
-	if not x or not mx or not mapInsets then
+	if not mapApplied or not x or not mx or not insets then
 		ApplyMapLayout()
 		return
 	end
 	local k = WorldMapFrame:GetEffectiveScale() / UIParent:GetEffectiveScale()
-	mx, my = mx + mapInsets.left * k, my - mapInsets.top * k -- visible corner
-	local scale = TargetMapScale(mapInsets)
+	mx, my = mx + insets.left * k, my - insets.top * k -- visible corner
+	local scale = TargetMapScale(insets)
+	local alpha = Clean(WorldMapFrame:GetAlpha())
 	if math.abs(mx - x) > 1 or math.abs(my - y) > 1
-		or (scale and math.abs(WorldMapFrame:GetScale() - scale) > 0.005) then
+		or (scale and math.abs(WorldMapFrame:GetScale() - scale) > 0.005)
+		or (alpha and alpha > db.mapAlpha + 0.001) then
 		ApplyMapLayout()
 	end
 end
@@ -854,6 +881,7 @@ end
 
 local function ShowMap()
 	if not WorldMapFrame then return end
+	mapOpenedAt = GetTime()
 	if not WorldMapFrame:IsShown() then
 		local mapID = GetMapForQuest(detailQuestID)
 		if OpenWorldMap then SafeCall(OpenWorldMap, mapID) else SafeCall(ShowUIPanel, WorldMapFrame) end
@@ -861,12 +889,13 @@ local function ShowMap()
 		local mapID = GetMapForQuest(detailQuestID)
 		if mapID then SafeCall(WorldMapFrame.SetMapID, WorldMapFrame, mapID) end
 	end
-	-- a full-screen map can't sit next to the log; use the windowed map
-	if WorldMapFrame:IsShown() and MapMaximized() and not InCombatLockdown() and WorldMapFrame.Minimize then
-		SafeCall(WorldMapFrame.Minimize, WorldMapFrame)
-	end
+	-- a full-size map can't sit next to the log; use the windowed map
+	if WorldMapFrame:IsShown() and MapMaximized() then MinimizeMap() end
 	HideDefaultQuestPanel()
 	ScheduleMapLayout()
+	-- the first time the map opens it isn't laid out until it has been drawn
+	C_Timer.After(0.05, ApplyMapLayout)
+	C_Timer.After(0.25, ApplyMapLayout)
 end
 
 local function HideMap()
