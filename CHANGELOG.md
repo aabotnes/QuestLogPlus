@@ -1,5 +1,9 @@
 # Quest Log Plus
 
+## v1.4.3
+
+- **Fixed:** after a flight path the quest log key could open the default quest log again. Quest Log Plus now checks that the key really opens it (on binding updates, after landing, on loading screens, and every few seconds) and binds it again if the game reset it. The key binding is now a priority binding.
+
 ## v1.4.2
 
 - **Compact list:** rows are only as tall as what they show. With XP, status text, objective progress and reward icons off, every quest is a single line.

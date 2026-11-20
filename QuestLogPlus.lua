@@ -2573,6 +2573,19 @@ toggleButton:SetScript("OnClick", function()
 end)
 
 local lastKeySig, pendingBind
+local keyState = { lastApply = 0 }
+
+-- true if every quest log key really opens this log right now (bindings can be
+-- reset by the game, e.g. around flight paths, without the key assignment changing)
+function keyState.Ok(keys)
+	if not db.takeOverKey or not GetBindingAction then return true end
+	for _, key in ipairs(keys) do
+		local action = Clean(SafeCall(GetBindingAction, key, true))
+		if type(action) ~= "string" or not action:find("QuestLogPlusToggleButton", 1, true) then return false end
+	end
+	return true
+end
+
 local function ApplyKeyOverride()
 	if not db then return end
 	if InCombatLockdown() then
@@ -2582,12 +2595,15 @@ local function ApplyKeyOverride()
 	pendingBind = false
 	local keys = { GetBindingKey("TOGGLEQUESTLOG") }
 	local sig = (db.takeOverKey and "1" or "0") .. ":" .. table.concat(keys, ",")
-	if sig == lastKeySig then return end
+	if sig == lastKeySig and keyState.Ok(keys) then return end
+	-- at most once a second unless the setting or the keys changed (no binding loops)
+	if sig == lastKeySig and GetTime() - keyState.lastApply < 1 then return end
+	keyState.lastApply = GetTime()
 	lastKeySig = sig
 	ClearOverrideBindings(toggleButton)
 	if db.takeOverKey then
 		for _, key in ipairs(keys) do
-			SetOverrideBindingClick(toggleButton, false, key, "QuestLogPlusToggleButton")
+			SetOverrideBindingClick(toggleButton, true, key, "QuestLogPlusToggleButton")
 		end
 	end
 end
@@ -2866,6 +2882,8 @@ local function Register(ev) pcall(events.RegisterEvent, events, ev) end
 Register("ADDON_LOADED")
 Register("PLAYER_LOGIN")
 Register("UPDATE_BINDINGS")
+Register("PLAYER_CONTROL_GAINED")   -- e.g. landing after a flight path
+Register("PLAYER_ENTERING_WORLD")   -- loading screens
 Register("PLAYER_REGEN_ENABLED")
 Register("PLAYER_LEVEL_UP")
 Register("GLOBAL_MOUSE_DOWN")
@@ -2898,7 +2916,9 @@ events:SetScript("OnEvent", function(_, event, arg1)
 		HookPanels()
 		RegisterBlizzardOptions()
 		ApplyKeyOverride()
-	elseif event == "UPDATE_BINDINGS" then
+		-- safety net: put the quest log key back if something resets the bindings
+		if C_Timer.NewTicker then C_Timer.NewTicker(3, ApplyKeyOverride) end
+	elseif event == "UPDATE_BINDINGS" or event == "PLAYER_CONTROL_GAINED" or event == "PLAYER_ENTERING_WORLD" then
 		ApplyKeyOverride()
 	elseif event == "PLAYER_REGEN_ENABLED" then
 		if pendingBind then ApplyKeyOverride() end
