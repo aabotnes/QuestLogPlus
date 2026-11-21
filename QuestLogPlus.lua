@@ -3147,7 +3147,9 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2)
 		if pendingBind then ApplyKeyOverride() end
 		if MapActive() then ScheduleMapLayout() end
 	elseif event == "GLOBAL_MOUSE_DOWN" then
-		if filterMenu and filterMenu:IsShown() and not MouseIsOver(filterMenu) and not MouseIsOver(filterButton) then
+		-- Forever has no global MouseIsOver; use the frames' own IsMouseOver
+		local function Over(fr) return fr and fr.IsMouseOver and fr:IsMouseOver() or false end
+		if filterMenu and filterMenu:IsShown() and not Over(filterMenu) and not Over(filterButton) then
 			filterMenu:Hide()
 		end
 	elseif event == "PLAYER_LEVEL_UP" then

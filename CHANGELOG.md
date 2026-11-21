@@ -1,5 +1,9 @@
 # Quest Log Plus
 
+## v1.5.1
+
+- **Fixed:** a Lua error ("attempt to call a nil value") when clicking anywhere while the Filter menu was open. Clicking outside the menu closes it again.
+
 ## v1.5.0
 
 - **Fixed:** sharing could abandon a quest instead of sharing it. Sharing now works the way the default log does on Forever: it selects the quest and shares it, then puts your selection back.
