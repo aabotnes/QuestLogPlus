@@ -1,5 +1,9 @@
 # Quest Log Plus
 
+## v1.5.3
+
+- **No repeated text on finished quests:** the quest tooltip and the details no longer show the same sentence two or three times (the turn-in text, the objective text and the objective). Each line is shown once, and the *Quest Objectives* heading is left out when it would only repeat the turn-in text.
+
 ## v1.5.2
 
 - **Shift-click a quest links it in chat**, like the default log. With the chat box closed, it opens with the link in it.

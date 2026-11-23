@@ -494,6 +494,14 @@ local function IsFiltering()
 	return searchText ~= "" or ActiveFilterCount() > 0
 end
 
+-- key for "is this the same text": ignores case, spacing and a closing period
+local function TextKey(text)
+	if type(text) ~= "string" then return nil end
+	local k = strlower(strtrim(text)):gsub("%s+", " "):gsub("[%.%s]+$", "")
+	if k == "" then return nil end
+	return k
+end
+
 local function Contains(text, needle)
 	return type(text) == "string" and strlower(text):find(needle, 1, true) ~= nil
 end
@@ -610,7 +618,7 @@ local function ToggleTrack(questID)
 end
 
 -- Shift-click: put the quest's link in the chat box, opening it when it is closed.
-local function LinkQuestInChat(q)
+function Party.LinkInChat(q)
 	local link = GetQuestLink and Clean(SafeCall(GetQuestLink, q.questID))
 	if type(link) ~= "string" or link == "" then
 		link = ("|cffffff00|Hquest:%d:%d|h[%s]|h|r"):format(q.questID, q.level or 0, q.title or "?")
@@ -1429,7 +1437,7 @@ function OnRowClick(self)
 		if IsSelectable(q) then selected[q.questID] = (not selected[q.questID]) or nil end
 		Refresh()
 	elseif IsShiftKeyDown() then
-		LinkQuestInChat(q)
+		Party.LinkInChat(q)
 	elseif IsControlKeyDown() then
 		ToggleTrack(q.questID)
 	else
@@ -1452,12 +1460,18 @@ local function OnRowEnter(self)
 	if q.timerEnd then
 		GameTooltip:AddLine("Time left: " .. Timers.Format(q.timerEnd - GetTime()), 1, 0.82, 0)
 	end
+	-- the same sentence (the turn-in text, the objective text, an objective) is shown only once
+	local seen = {}
+	local function New(text)
+		local k = TextKey(text)
+		if not k or seen[k] then return false end
+		seen[k] = true
+		return true
+	end
 	if q.state == "complete" then
 		GameTooltip:AddLine("Ready to turn in", 0.35, 1, 0.35)
 		local comp = Clean(SafeCall(GetQuestLogCompletionText, q.index))
-		if type(comp) == "string" and comp ~= "" then
-			GameTooltip:AddLine(comp, 0.8, 0.8, 0.8, true)
-		end
+		if New(comp) then GameTooltip:AddLine(comp, 0.8, 0.8, 0.8, true) end
 	elseif q.state == "failed" then
 		GameTooltip:AddLine("Failed", 1, 0.3, 0.3)
 	end
@@ -1466,21 +1480,18 @@ local function OnRowEnter(self)
 	if db.tooltipObjectives then
 		local _, t = SafeCall(GetQuestLogQuestText, q.index)
 		objText = Clean(t)
+		if not New(objText) then objText = nil end
 	end
-	if type(objText) == "string" and objText ~= "" then
-		GameTooltip:AddLine(" ")
-		GameTooltip:AddLine(QUEST_OBJECTIVES or "Quest Objectives", 1, 0.82, 0)
-		GameTooltip:AddLine(objText, 1, 1, 1, true)
-	end
+	local objLines = {}
 	for _, o in ipairs(GetObjectives(q.questID)) do
 		local text = Clean(o.text)
-		if text and text ~= "" then
-			if o.finished then
-				GameTooltip:AddLine(text, 0.6, 0.6, 0.6)
-			else
-				GameTooltip:AddLine(text, 1, 1, 1)
-			end
-		end
+		if New(text) then objLines[#objLines + 1] = o.finished and { text, 0.6 } or { text, 1 } end
+	end
+	if objText or #objLines > 0 then
+		GameTooltip:AddLine(" ")
+		GameTooltip:AddLine(QUEST_OBJECTIVES or "Quest Objectives", 1, 0.82, 0)
+		if objText then GameTooltip:AddLine(objText, 1, 1, 1, true) end
+		for _, l in ipairs(objLines) do GameTooltip:AddLine(l[1], l[2], l[2], l[2]) end
 	end
 	if q.xp > 0 then
 		local pct = LevelPercent(q.xp)
@@ -2107,10 +2118,20 @@ local function RenderDetail(q)
 	-- objectives
 	local desc, objSummary = SafeCall(GetQuestLogQuestText, q.index)
 	desc, objSummary = Clean(desc), Clean(objSummary)
+	-- don't repeat the turn-in text, and don't repeat the objective text as an objective
+	local seen = {}
+	if q.state == "complete" then
+		local ck = TextKey(Clean(SafeCall(GetQuestLogCompletionText, q.index)))
+		if ck then seen[ck] = true end
+	end
+	local sk = TextKey(objSummary)
+	if sk and seen[sk] then objSummary = nil elseif sk then seen[sk] = true end
 	local objLines = {}
 	for _, o in ipairs(GetObjectives(q.questID)) do
 		local text = Clean(o.text)
-		if text and text ~= "" then
+		local tk = TextKey(text)
+		if tk and not seen[tk] then
+			seen[tk] = true
 			if o.finished then
 				objLines[#objLines + 1] = IconStr(K.READY_ICON, 14) .. " " .. K.GREY .. text .. "|r"
 			else
