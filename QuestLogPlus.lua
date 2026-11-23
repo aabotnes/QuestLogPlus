@@ -609,6 +609,23 @@ local function ToggleTrack(questID)
 	RequestRefresh()
 end
 
+-- Shift-click: put the quest's link in the chat box, opening it when it is closed.
+local function LinkQuestInChat(q)
+	local link = GetQuestLink and Clean(SafeCall(GetQuestLink, q.questID))
+	if type(link) ~= "string" or link == "" then
+		link = ("|cffffff00|Hquest:%d:%d|h[%s]|h|r"):format(q.questID, q.level or 0, q.title or "?")
+	end
+	local box = (ChatFrameUtil and ChatFrameUtil.GetActiveWindow and SafeCall(ChatFrameUtil.GetActiveWindow))
+		or (ChatEdit_GetActiveWindow and SafeCall(ChatEdit_GetActiveWindow))
+	if box and box.Insert then
+		box:Insert(link)
+	elseif ChatFrameUtil and ChatFrameUtil.OpenChat then
+		ChatFrameUtil.OpenChat(link)
+	elseif ChatFrame_OpenChat then
+		ChatFrame_OpenChat(link)
+	end
+end
+
 ---------------------------------------------------------------------------
 -- Reward tooltips (shared by the detail buttons and the list icons)
 ---------------------------------------------------------------------------
@@ -1412,6 +1429,8 @@ function OnRowClick(self)
 		if IsSelectable(q) then selected[q.questID] = (not selected[q.questID]) or nil end
 		Refresh()
 	elseif IsShiftKeyDown() then
+		LinkQuestInChat(q)
+	elseif IsControlKeyDown() then
 		ToggleTrack(q.questID)
 	else
 		OpenDetail(q.questID)
@@ -1473,7 +1492,8 @@ local function OnRowEnter(self)
 		end
 	else
 		GameTooltip:AddLine(" ")
-		GameTooltip:AddLine("Click: show/hide details   Shift-click: " .. (IsTracked(q.questID) and "untrack" or "track"), 0.5, 0.5, 0.5)
+		GameTooltip:AddLine("Click: show/hide details", 0.5, 0.5, 0.5)
+		GameTooltip:AddLine("Shift-click: link in chat   Ctrl-click: " .. (IsTracked(q.questID) and "untrack" or "track"), 0.5, 0.5, 0.5)
 	end
 	GameTooltip:Show()
 end
@@ -1940,6 +1960,29 @@ local function CreateDetailWidgets()
 	detail.itemsLabel = FS("GameFontHighlight")
 	detail.extraText = FS("GameFontHighlight")
 
+	-- "Track this quest" checkbox under the title
+	local tpl = FirstTemplate("UICheckButtonTemplate")
+	local cb = CreateFrame("CheckButton", nil, detailContent, tpl)
+	cb:SetSize(22, 22)
+	if not tpl then
+		cb:SetNormalTexture(K.BOX_TEX)
+		cb:SetCheckedTexture(K.BOXCHECK_TEX)
+		cb:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight", "ADD")
+	end
+	cb.label = cb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	cb.label:SetPoint("LEFT", cb, "RIGHT", 0, 1)
+	cb.label:SetText("Track this quest")
+	cb:SetHitRectInsets(0, -(cb.label:GetStringWidth() + 4), 0, 0)
+	cb:SetScript("OnClick", function() if detailQuestID then ToggleTrack(detailQuestID) end end)
+	cb:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:SetText("Track this quest", 1, 1, 1)
+		GameTooltip:AddLine("Shows the quest in the objective tracker. Ctrl-click a quest in the list does the same.", 0.8, 0.8, 0.8, true)
+		GameTooltip:Show()
+	end)
+	cb:SetScript("OnLeave", HideTooltip)
+	detail.track = cb
+
 	detail.statusBg = detailContent:CreateTexture(nil, "BACKGROUND")
 	detail.statusBg:SetPoint("TOPLEFT", detail.status, "TOPLEFT", -4, 4)
 	detail.statusBg:SetPoint("BOTTOMRIGHT", detail.status, "BOTTOMRIGHT", 4, -4)
@@ -2036,7 +2079,12 @@ local function RenderDetail(q)
 	else
 		detail.title:SetTextColor(QuestColor(q))
 	end
-	Text(detail.title, QuestTitle(q), 10)
+	Text(detail.title, QuestTitle(q), 4)
+	detail.track:ClearAllPoints()
+	detail.track:SetPoint("TOPLEFT", detailContent, "TOPLEFT", 2, -y)
+	detail.track:SetChecked(IsTracked(q.questID) and true or false)
+	detail.track:Show()
+	y = y + 28
 
 	-- status banner
 	if q.state == "complete" then
@@ -2142,11 +2190,11 @@ function UpdateBottom()
 	if not frame then return end
 	if popout and popout:IsShown() then
 		UpdateDetailButtons(popButtons)
-		LayoutButtons(popout, popButtons, { popButtons.track, popButtons.share, popButtons.abandon })
+		LayoutButtons(popout, popButtons, { popButtons.share, popButtons.abandon })
 	end
 	if view == "detail" then
 		UpdateDetailButtons(buttons)
-		LayoutButtons(frame, buttons, { buttons.back, buttons.track, buttons.share, buttons.abandon })
+		LayoutButtons(frame, buttons, { buttons.back, buttons.share, buttons.abandon })
 	elseif mode then
 		local n = #SelectedList()
 		buttons.action:SetText(("%s (%d)"):format(mode == "share" and "Share" or "Abandon", n))

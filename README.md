@@ -4,7 +4,7 @@ A quest log for **World of Warcraft: Forever** (interface 16001). It looks like 
 
 - **`+1,250 xp`** on every quest (setting, off by default), so you can see whether a quest is worth doing. The tooltip shows what % of a level that is.
 - **Group members on the quest:** [2] in front of a quest when 2 of your party or raid members are on it too, like the default log. Hover the quest to see who.
-- **Tracked quests** can get a thin blue border on the right edge of the row (setting) (shift-click a quest to track or untrack it).
+- **Tracked quests** can get a thin blue border on the right edge of the row (setting) (ctrl-click a quest, or tick *Track this quest* in its details, to track or untrack it). Shift-click a quest to link it in chat.
 - **Completed quests stand out:** the yellow turn-in "?" and a green title, plus an optional green border, "Ready to turn in", and who to return to. Zone headers show "N ready", and finished quests sort to the top.
 - **Rewards like the default log:** item buttons with icon, name and quality color. Hover one for the full item tooltip (stats, compare), shift-click to link it, ctrl-click to preview it.
 - **Reward icons in the list** (on by default): small icons under each quest, with "Choose one:" / "You will receive:" above them.

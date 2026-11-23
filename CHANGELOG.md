@@ -1,5 +1,11 @@
 # Quest Log Plus
 
+## v1.5.2
+
+- **Shift-click a quest links it in chat**, like the default log. With the chat box closed, it opens with the link in it.
+- **Ctrl-click a quest to track or untrack it** (this used to be shift-click).
+- **Track this quest** checkbox at the top of the quest details, in place of the Track button.
+
 ## v1.5.1
 
 - **Fixed:** a Lua error ("attempt to call a nil value") when clicking anywhere while the Filter menu was open. Clicking outside the menu closes it again.
